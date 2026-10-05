@@ -159,6 +159,11 @@ reports/                      per-version benchmarks, significance, error analys
   in `docs/audit/`). The remaining movie errors are different works sharing a title with no year to
   tell them apart (*Starman* film vs TV series). Fixing those needs an external ID source
   (TMDB/IMDb), as the blueprint suggests.
+* The opposite error exists too: some editions of one work stay separate items (*Red Dead
+  Redemption* and its GOTY edition; *Game of Thrones: Season 6* and the complete collection).
+  Display titles are cleaned at load time ("Avengers 4k UHD BLURAY Digital Steelbook" →
+  "Avengers"), which makes these show up as same-titled items (~590 groups). Same-titled games
+  get their release year; movies don't, because Amazon's movie years are mostly DVD dates.
 * A handful of misfiled non-games without any media metadata remain in the game catalog (e.g. a
   Hallmark movie listed under PC games); they show up in `reports/eda.md`.
 * Disco Elysium is in the raw data but has too few likes from bridge users to pass the item filter.

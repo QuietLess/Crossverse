@@ -64,3 +64,21 @@ def test_api_reports_ambiguity_and_accepts_domain(shared_title, small_settings):
         body = client.post("/recommend", json={"liked": [{"item": title, "domain": "game"}], "k": 3}).json()
         assert body["resolved_profile"][0]["item_id"] == game_id
         assert body["ambiguous"] == {}
+
+
+def test_search_ignores_leading_article(trained, monkeypatch):
+    """'martian' should rank 'The Martian' as a prefix match, not below 'Martian Child'."""
+    engine, _, _ = trained
+    items = engine.catalog.items
+    movies = items[items["domain"] == "movie"].sort_values("popularity")
+    small, big = engine.catalog.index[movies["item_id"].iloc[0]], engine.catalog.index[movies["item_id"].iloc[-1]]
+    engine._prefix_index(), engine._match_titles
+    titles = engine._titles.copy()
+    titles[big], titles[small] = "The Zqxmartian", "Zqxmartian Child"
+    monkeypatch.setattr(engine, "_titles", titles)
+    monkeypatch.setattr(engine, "_norm_titles", np.array([_norm(t) for t in titles]))
+    monkeypatch.delitem(engine.__dict__, "_prefix")
+    monkeypatch.delitem(engine.__dict__, "_match")
+    expected = [items.iloc[big]["item_id"], items.iloc[small]["item_id"]]
+    assert [h["item_id"] for h in engine.search("zqxmartian", limit=2)] == expected
+    assert engine.resolve("Zqxmartian") == expected[0]

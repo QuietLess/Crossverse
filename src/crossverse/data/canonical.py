@@ -123,6 +123,105 @@ def normalize_title(title: str, domain: str = "movie") -> str:
     return t
 
 
+# ---------------------------------------------------------------------------------------------
+# Display titles. normalize_title() builds the identity key; display_title() keeps the human
+# spelling but drops the same product noise, so "Avengers 4k UHD BLURAY Digital Steelbook" reads
+# "Avengers". Noise is only removed at the ends of the title, inside brackets, or after a separator,
+# never mid-title ("Kill Switch", "Gold", "Hamlet" stay intact).
+# ---------------------------------------------------------------------------------------------
+_SEP = r"[\s,:;/|+\-–—]"
+_GAME_FORMAT = _FORMAT.replace("|3d|2d", "")  # "Worms 3D", "Kingdom Hearts 3D" are names
+_ANNIVERSARY = rf"(?:\d+(?:st|nd|rd|th)\s*)?anniversary(?:\s*{_EDITION_SUFFIX})?"
+_DISPLAY_NOISE = {
+    "movie": rf"(?:{_FORMAT}|bd|(?:4k[\s-]*)?ultra[\s-]*hd)(?:\s*(?:collection|set|edition|version))?|{_ANNIVERSARY}|{_EDITION}|{_SEASON}"
+             r"|(?:the\s*)?complete\s*(?:series|collection)|seasons?\s*\d+\s*(?:-|to|&)\s*\d+",
+    "game": rf"(?:(?:sony|microsoft|origin|uplay)\s*)?(?:{_PLATFORM})(?:\s*(?:edition|version))?|{_GAME_FORMAT}"
+            rf"|{_ANNIVERSARY}|{_EDITION}|game\s*only|physical(?:\s*edition)?",
+}
+_DISPLAY_TAIL = {d: re.compile(rf"(?:^|{_SEP}+)(?:{p})\.?{_SEP}*$", re.I) for d, p in _DISPLAY_NOISE.items()}
+# Leading platforms only when unambiguous: "Wii Sports" and "Switch 'n' Shoot" are names.
+_DISPLAY_HEAD = re.compile(
+    rf"^(?:ps[1-5]|playstation\s*[1-5]|xbox\s*(?:one|360|series\s*[xs])|nintendo\s*(?:switch|3ds|ds)){_SEP}+(?=.*[a-z])",
+    re.I,
+)
+_TRAILING_ARTICLE = re.compile(r"^(.+?),\s*(the|a|an)$", re.I)  # "Mountain Between Us, The"
+# Bracket contents that are packaging/marketing, not part of the work's name.
+_BRACKET_NOISE = re.compile(
+    rf"\b(?:{_FORMAT}|{_PLATFORM}|{_EDITION}|{_SEASON}|region|uncut|packaging|exclusive|boxed|sapphire|remaster(?:ed)?"
+    r"|subtitle[sd]?|superbit|decal|physical|game\s*only|restricted|distribution|slip\s*cover|sleeve|bonus|includes?"
+    r"|bilingual|english|french|spanish|german|anniversary|deluxe|special|limited|bigface|seasons?"
+    r"|download|(?:digital|online|activation)\s*code|(?:cd[\s-]*)?key)\b",
+    re.I,
+)
+_BRACKET = re.compile(r"\s*[\(\[]\s*([^\(\)\[\]]*?)\s*[\)\]]")
+_ONLY_BRACKETS_LEFT = re.compile(r"(?:\s*[\(\[][^\(\)\[\]]*[\)\]])*\s*$")
+_BUNDLE_TAIL = re.compile(r"\s+(?:w/|with\s+bonus|\+\s*bonus|includes?\s).*$", re.I)
+
+
+def display_title(title: str, domain: str = "movie") -> str:
+    """Human-facing title without format/platform/edition/season noise. Idempotent: one pass can
+    expose more noise ("Good Doctor, The (2017) - Season 3"), so it runs to a fixed point."""
+    if not isinstance(title, str) or not title.strip():
+        return title
+    for _ in range(4):
+        cleaned = _display_once(title, domain)
+        if cleaned == title:
+            break
+        title = cleaned
+    return title
+
+
+def display_titles(items: pd.DataFrame) -> list[str]:
+    """display_title() for a catalog (domain, title, year), adding the year where cleaning made two
+    games look identical ("Doom" -> "Doom (2016)" / "Doom (2001)"). Movie metadata years are mostly
+    DVD release dates ("Alien" -> 1999), so same-titled movies are left alone rather than mislabelled."""
+    clean = pd.Series([display_title(t, d) for t, d in zip(items["title"], items["domain"], strict=True)],
+                      index=items.index)
+    key = items["domain"] + "|" + clean.str.lower()
+    years = items["year"] if "year" in items else pd.Series(-1, index=items.index)
+    clash = key.duplicated(keep=False) & (items["domain"] == "game") & (years.fillna(-1) > 0) & ~clean.str.contains(r"[(\[](?:18|19|20)\d\d[)\]]")
+    clean[clash] = clean[clash] + " (" + years[clash].astype(int).astype(str) + ")"
+    return clean.tolist()
+
+
+def _flip_article(m: re.Match[str]) -> str:
+    article = m.group(2)
+    return f"{article if article.isupper() else article.capitalize()} {m.group(1)}"
+
+
+def _display_once(title: str, domain: str) -> str:
+    tail = _DISPLAY_TAIL.get(domain, _DISPLAY_TAIL["movie"])
+
+    year: str | None = None
+
+    def bracket(m: re.Match[str]) -> str:
+        nonlocal year
+        inner = m.group(1)
+        if re.fullmatch(r"(?:18|19|20)\d\d", inner):
+            # A trailing release year is kept once, at the end: "Titanic [1997] [Region Free]" -> "Titanic (1997)".
+            # Years inside a list ("Men in Black (1997) / Men in Black II") stay where they are.
+            if not _ONLY_BRACKETS_LEFT.fullmatch(m.string, m.end()):
+                return m.group(0)
+            year = year or inner
+            return ""
+        return "" if not inner or _BRACKET_NOISE.search(inner) else m.group(0)
+
+    t = _BRACKET.sub(bracket, title)
+    t = _BUNDLE_TAIL.sub("", t)
+    if domain == "game":
+        t = _DISPLAY_HEAD.sub("", t)
+    while True:  # peel noise off the end: "Simpsons Season 19, The DVD" -> "The Simpsons"
+        stripped = tail.sub("", t).rstrip()
+        stripped = _TRAILING_ARTICLE.sub(_flip_article, stripped)
+        if stripped == t or not re.search(r"[A-Za-z0-9]", stripped):
+            break
+        t = stripped
+    t = re.sub(r"\s+", " ", t).strip(" ,:;/|+-–—")
+    if not re.search(r"[A-Za-z0-9]", t) or re.fullmatch(r"(?i)(?:the|a|an)", t):
+        return title.strip()
+    return f"{t} ({year})" if year else t
+
+
 def is_accessory(title: str, categories: list[str] | None = None) -> bool:
     cats = " ".join(categories or []).lower()
     if "accessories" in cats or "consoles" in cats or "virtual reality" in cats:

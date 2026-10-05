@@ -70,6 +70,10 @@ _DOMAIN_PREFIX = re.compile(r"^\s*(movie|film|tv|show|game)\s*:\s*", re.I)
 _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "movie", "game": "game"}
 
 
+def _match_key(title: str) -> str:
+    return re.sub(r"^(?:the|a|an) ", "", _norm(title))
+
+
 def parse_query(text: str) -> tuple[str, str | None, int | None]:
     """Split 'game: Batman Begins (2005)' into (title, domain, year). Domain/year are optional hints."""
     domain = None
@@ -264,10 +268,11 @@ class CrossVerseEngine:
 
     @property
     def _match_titles(self) -> np.ndarray:
-        """Normalised titles without a trailing '(YYYY)', so 'Batman Begins (2005)' matches 'Batman Begins'.
+        """Normalised titles without a trailing '(YYYY)' or leading article, so 'Batman Begins (2005)'
+        matches 'Batman Begins' and 'martian' is a prefix of 'The Martian'.
         Built lazily: engines pickled before this existed don't carry it."""
         if "_match" not in self.__dict__:
-            self.__dict__["_match"] = np.array([_norm(_TRAILING_YEAR.sub("", t)) for t in self._titles])
+            self.__dict__["_match"] = np.array([_match_key(_TRAILING_YEAR.sub("", t)) for t in self._titles])
         return self.__dict__["_match"]
 
     def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
@@ -287,9 +292,9 @@ class CrossVerseEngine:
         idx = np.array(sorted(i for i in hits if mask[i]), dtype=np.int64)
         if not len(idx):
             return []
-        match = self._match_titles
-        exact = np.array([match[i] == q for i in idx])
-        prefix = np.array([match[i].startswith(q) for i in idx])
+        match, key_q = self._match_titles, _match_key(title)
+        exact = np.array([match[i] == key_q for i in idx])
+        prefix = np.array([match[i].startswith(key_q) for i in idx])
         years = self.catalog.items["year"].to_numpy()
         same_year = (years[idx] == year) if year else np.zeros(len(idx), dtype=bool)
         key = exact * 1e10 + same_year * 1e9 + prefix * 1e6 + self.popularity[idx]
@@ -337,7 +342,7 @@ class CrossVerseEngine:
         title, hinted_domain, _ = parse_query(name_or_id)
         if domain or hinted_domain:
             return best["item_id"], []
-        q, match = _norm(title), self._match_titles
+        q, match = _match_key(title), self._match_titles
         alternatives = [h for h in hits[1:] if h["domain"] != best["domain"]
                         and match[self.catalog.index[h["item_id"]]] == q]
         return best["item_id"], alternatives[:3]
@@ -348,7 +353,22 @@ class CrossVerseEngine:
         with open(path, "wb") as fh:
             pickle.dump(self, fh, protocol=pickle.HIGHEST_PROTOCOL)
 
+    def refresh_display_titles(self) -> None:
+        """Re-clean titles with the current display_title(), so bundles trained before a cleaner
+        improvement show today's titles. Display and search only: ids, features and scores are unchanged."""
+        from crossverse.data.canonical import display_titles
+
+        items = self.catalog.items
+        items["title"] = display_titles(items)
+        self._titles = items["title"].to_numpy()
+        self._norm_titles = np.array([_norm(t) for t in self._titles])
+        self.explainer.titles = self._titles
+        for lazy in ("_prefix", "_match"):
+            self.__dict__.pop(lazy, None)
+
     @staticmethod
     def load(path: Path) -> CrossVerseEngine:
         with open(path, "rb") as fh:
-            return pickle.load(fh)
+            engine: CrossVerseEngine = pickle.load(fh)
+        engine.refresh_display_titles()
+        return engine

@@ -242,19 +242,6 @@ def load_metadata(raw_dir: Path, wanted: dict[str, set[str]]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-_DISPLAY_TAIL = re.compile(
-    r"\s[-–|]\s*(?:ps[1-5]|playstation.*|xbox.*|nintendo.*|pc.*|mac.*|wii.*|switch.*|standard edition|digital code)$",
-    re.I,
-)
-
-
-def display_title(title: str) -> str:
-    """Human-facing title: drop bracketed format noise and trailing platform suffixes."""
-    t = re.sub(r"\s*[\(\[][^\)\]]*(?:dvd|blu|4k|hd|disc|edition|version|ps\d|xbox|switch|pc|digital|import|vhs)[^\)\]]*[\)\]]", "", title, flags=re.I)
-    t = _DISPLAY_TAIL.sub("", t).strip(" -:|")
-    return t or title
-
-
 # --------------------------------------------------------------------------------------------
 # Build
 # --------------------------------------------------------------------------------------------
@@ -268,13 +255,14 @@ def build_catalog(meta: pd.DataFrame, mapping: pd.DataFrame) -> pd.DataFrame:
         head = g.iloc[0]
         genres = list(dict.fromkeys(x for gs in g["genres"] for x in gs))[:6]
         desc = max(g["description"], key=len)
-        text = " ".join([display_title(head["title"]), " ".join(genres), desc, head["features"]])
+        title = canonical.display_title(head["title"], head["domain"])
+        text = " ".join([title, " ".join(genres), desc, head["features"]])
         years = g["year"].dropna()
         rows.append(
             {
                 "item_id": cid,
                 "domain": head["domain"],
-                "title": display_title(head["title"]),
+                "title": title,
                 "text": text[:4000],
                 "genres": genres,
                 "themes": item_themes(genres, text),
@@ -283,7 +271,9 @@ def build_catalog(meta: pd.DataFrame, mapping: pd.DataFrame) -> pd.DataFrame:
                 "n_products": len(g),
             }
         )
-    return pd.DataFrame(rows)
+    catalog = pd.DataFrame(rows)
+    catalog["title"] = canonical.display_titles(catalog)
+    return catalog
 
 
 def build_dataset(cfg: DataConfig | None = None) -> dict[str, object]:
