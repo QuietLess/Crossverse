@@ -126,6 +126,10 @@ Each item comes back with `evidence`:
 Unknown or misspelled titles come back in `unresolved` with `suggestions`, e.g. `"Witcher 3 Wild Hnt"
 → ["Witcher 3: Wild Hunt", ...]`.
 
+Titles that exist as both a movie and a game (*Batman Begins*) resolve to the more popular one and
+the other comes back in `ambiguous`. To pick one, set `"domain": "game"` on the profile item or
+prefix the title (`"game: Batman Begins"`). A trailing year (`"Dune (2021)"`) is used as a hint.
+
 ## Repository layout
 
 ```

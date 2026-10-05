@@ -96,6 +96,13 @@ def render_results(body: dict | None) -> None:
     )
     if body.get("unresolved"):
         st.warning("Not found in catalog: " + ", ".join(body["unresolved"]))
+    picked = {p["input"]: p for p in body.get("resolved_profile", [])}
+    for title, alts in body.get("ambiguous", {}).items():
+        used = picked.get(title)
+        if used:
+            other = ", ".join(f"{DOMAIN_ICON[a['domain']]} {a['title']}" for a in alts)
+            st.info(f"“{title}” was read as {DOMAIN_ICON[used['domain']]} {used['domain']} — "
+                    f"also exists as {other}. Prefix it with `{alts[0]['domain']}:` to use that instead.")
     for item in body["items"]:
         ev = item["evidence"]
         conf = {"high": "🟢", "medium": "🟡", "low": "⚪"}.get(ev.get("reason_confidence"), "")

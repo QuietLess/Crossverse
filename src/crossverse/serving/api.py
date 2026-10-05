@@ -33,6 +33,8 @@ Domain = Literal["movie", "game"]
 class ProfileItem(BaseModel):
     item: str = Field(..., description="catalog item_id or a title to resolve", examples=["Blade Runner 2049"])
     rating: float = Field(5.0, ge=1, le=5)
+    domain: Domain | None = Field(None, description="disambiguate titles that exist as both a movie and a game "
+                                                    "(or prefix the title: 'game: Batman Begins')")
 
 
 class RecommendRequest(BaseModel):
@@ -83,6 +85,8 @@ class RecommendResponse(BaseModel):
     resolved_profile: list[dict[str, Any]]
     unresolved: list[str]
     suggestions: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
+    # input title -> same-titled items in the other domain that were *not* picked
+    ambiguous: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     candidate_count: int
     latency_ms: float
     items: list[RecItem]
@@ -159,8 +163,11 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
     def resolve_profile(eng: CrossVerseEngine, liked: list[ProfileItem], disliked: list[str],
                         source_domain: str | None = None):
         resolved, unresolved, pairs, dis = [], [], [], []
+        ambiguous: dict[str, list[dict[str, Any]]] = {}
         for p in liked:
-            iid = eng.resolve(p.item, source_domain)
+            iid, alternatives = eng.resolve_detail(p.item, p.domain or source_domain)
+            if alternatives:
+                ambiguous[p.item] = alternatives
             if iid is None:
                 unresolved.append(p.item)
                 M.UNKNOWN_ITEMS.inc()
@@ -168,17 +175,20 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             pairs.append((iid, p.rating))
             resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": p.rating, "input": p.item})
         for d in disliked:
-            iid = eng.resolve(d, source_domain)
+            iid, alternatives = eng.resolve_detail(d, source_domain)
+            if alternatives:
+                ambiguous[d] = alternatives
             if iid is None:
                 unresolved.append(d)
                 M.UNKNOWN_ITEMS.inc()
                 continue
             dis.append(iid)
             resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": 1.0, "input": d})
-        return pairs, dis, resolved, unresolved
+        return pairs, dis, resolved, unresolved, ambiguous
 
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
-                free_text="", exclude=None, explain=True, diversify=True) -> RecommendResponse:
+                free_text="", exclude=None, explain=True, diversify=True,
+                ambiguous=None) -> RecommendResponse:
         key = "rec:" + hashlib.sha1(json.dumps(
             [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify],
             sort_keys=True, default=str).encode()).hexdigest()
@@ -189,7 +199,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
                                  resolved_profile=resolved, unresolved=unresolved,
-                                 suggestions={u: eng.suggest(u) for u in unresolved},
+                                 suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
                                  candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items)
         state.store.log_recommendations([{**i.model_dump(), "model_version": res.model_version, "request_mode": mode}
                                          for i in items])
@@ -210,30 +220,30 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
     def recommend(req: RecommendRequest) -> RecommendResponse:
         """Mixed profile (movies + games + dislikes) or cold-start preferences -> ranked items."""
         eng = engine_or_503()
-        pairs, dis, resolved, unresolved = resolve_profile(eng, req.liked, req.disliked)
+        pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked)
         mode = "cold_start" if not pairs and not dis else "mixed"
         return respond(eng, mode, pairs, dis, resolved, unresolved, req.target_domain, req.k, req.preferences,
-                       req.free_text, req.exclude, req.explain, req.diversify)
+                       req.free_text, req.exclude, req.explain, req.diversify, ambiguous)
 
     @app.post("/recommend/movie-to-game", response_model=RecommendResponse, tags=["recommend"])
     def movie_to_game(req: DomainRequest) -> RecommendResponse:
         """Movie history only -> games."""
         eng = engine_or_503()
-        pairs, dis, resolved, unresolved = resolve_profile(eng, req.liked, req.disliked, "movie")
+        pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "movie")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked movies were found",
                                       "suggestions": {u: eng.suggest(u, "movie") for u in unresolved}})
-        return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain)
+        return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain, ambiguous=ambiguous)
 
     @app.post("/recommend/game-to-movie", response_model=RecommendResponse, tags=["recommend"])
     def game_to_movie(req: DomainRequest) -> RecommendResponse:
         """Game history only -> movies / series."""
         eng = engine_or_503()
-        pairs, dis, resolved, unresolved = resolve_profile(eng, req.liked, req.disliked, "game")
+        pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "game")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked games were found",
                                       "suggestions": {u: eng.suggest(u, "game") for u in unresolved}})
-        return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain)
+        return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain, ambiguous=ambiguous)
 
     @app.get("/similar/{domain}/{item_id}", tags=["items"])
     def similar(domain: Domain, item_id: str, k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:

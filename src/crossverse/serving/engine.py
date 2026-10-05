@@ -65,6 +65,26 @@ def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
 
 
+_TRAILING_YEAR = re.compile(r"\s*[(\[]\s*((?:18|19|20)\d\d)\s*[)\]]\s*$")
+_DOMAIN_PREFIX = re.compile(r"^\s*(movie|film|tv|show|game)\s*:\s*", re.I)
+_PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "movie", "game": "game"}
+
+
+def parse_query(text: str) -> tuple[str, str | None, int | None]:
+    """Split 'game: Batman Begins (2005)' into (title, domain, year). Domain/year are optional hints."""
+    domain = None
+    m = _DOMAIN_PREFIX.match(text)
+    if m:
+        domain = _PREFIX_DOMAIN[m.group(1).lower()]
+        text = text[m.end():]
+    year = None
+    m = _TRAILING_YEAR.search(text)
+    if m:
+        year = int(m.group(1))
+        text = text[: m.start()]
+    return text.strip(), domain, year
+
+
 class CrossVerseEngine:
     def __init__(self, catalog: Catalog, retrievers: dict[str, Retriever], ranker: LightGBMRanker | RoutedRanker | None,
                  per_source: int = 100, diversity_lambda: float = 0.15, version: str = "dev",
@@ -242,8 +262,18 @@ class CrossVerseEngine:
             "popularity": int(self.popularity[i]),
         }
 
+    @property
+    def _match_titles(self) -> np.ndarray:
+        """Normalised titles without a trailing '(YYYY)', so 'Batman Begins (2005)' matches 'Batman Begins'.
+        Built lazily: engines pickled before this existed don't carry it."""
+        if "_match" not in self.__dict__:
+            self.__dict__["_match"] = np.array([_norm(_TRAILING_YEAR.sub("", t)) for t in self._titles])
+        return self.__dict__["_match"]
+
     def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
-        q = _norm(query)
+        title, hinted_domain, year = parse_query(query)
+        domain = domain or hinted_domain
+        q = _norm(title)
         if not q:
             return []
         index = self._prefix_index()
@@ -257,9 +287,12 @@ class CrossVerseEngine:
         idx = np.array(sorted(i for i in hits if mask[i]), dtype=np.int64)
         if not len(idx):
             return []
-        exact = np.array([self._norm_titles[i] == q for i in idx])
-        prefix = np.array([self._norm_titles[i].startswith(q) for i in idx])
-        key = exact * 1e9 + prefix * 1e6 + self.popularity[idx]
+        match = self._match_titles
+        exact = np.array([match[i] == q for i in idx])
+        prefix = np.array([match[i].startswith(q) for i in idx])
+        years = self.catalog.items["year"].to_numpy()
+        same_year = (years[idx] == year) if year else np.zeros(len(idx), dtype=bool)
+        key = exact * 1e10 + same_year * 1e9 + prefix * 1e6 + self.popularity[idx]
         return [self.item_dict(int(i)) for i in idx[np.argsort(-key)][:limit]]
 
     def _prefix_index(self) -> dict[str, set[int]]:
@@ -290,10 +323,24 @@ class CrossVerseEngine:
         return [self.item_dict(i) for s, _, i in scored[:n] if s >= 0.5]
 
     def resolve(self, name_or_id: str, domain: str | None = None) -> str | None:
+        return self.resolve_detail(name_or_id, domain)[0]
+
+    def resolve_detail(self, name_or_id: str, domain: str | None = None) -> tuple[str | None, list[dict[str, Any]]]:
+        """Resolve a title or id. Also returns exact-title matches in the *other* domain, so callers can
+        tell the user 'Batman Begins' could also mean the game (pass 'game: Batman Begins' to pick it)."""
         if name_or_id in self.catalog.index:
-            return name_or_id
-        hits = self.search(name_or_id, domain, 1)
-        return hits[0]["item_id"] if hits else None
+            return name_or_id, []
+        hits = self.search(name_or_id, domain, 10)
+        if not hits:
+            return None, []
+        best = hits[0]
+        title, hinted_domain, _ = parse_query(name_or_id)
+        if domain or hinted_domain:
+            return best["item_id"], []
+        q, match = _norm(title), self._match_titles
+        alternatives = [h for h in hits[1:] if h["domain"] != best["domain"]
+                        and match[self.catalog.index[h["item_id"]]] == q]
+        return best["item_id"], alternatives[:3]
 
     # ------------------------------------------------------------------------------------------
     def save(self, path: Path) -> None:
