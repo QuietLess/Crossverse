@@ -1,0 +1,307 @@
+"""CrossVerseEngine: the full online recommendation path, shared by API, UI and offline eval.
+
+history -> Stage A candidates (all retrievers) -> features -> LightGBM ranker
+        -> diversity / business rules -> evidence-based explanations
+"""
+
+from __future__ import annotations
+
+import pickle
+import re
+import time
+import uuid
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+from crossverse.evaluation.protocol import EvalCase
+from crossverse.explain.evidence import Explainer
+from crossverse.ranking.candidates import CandidateGenerator
+from crossverse.ranking.features import FeatureBuilder
+from crossverse.ranking.ranker import LightGBMRanker, RoutedRanker, diversify
+from crossverse.retrieval.base import Catalog, History, Retriever, top_k
+from crossverse.retrieval.baselines import CoPreferenceRetriever, ItemKNNRetriever
+from crossverse.retrieval.content import ContentRetriever
+
+
+@dataclass
+class Recommendation:
+    recommendation_id: str
+    item_id: str
+    title: str
+    domain: str
+    rank: int
+    score: float
+    sources: list[str]
+    themes: list[str]
+    year: int | None
+    evidence: dict[str, Any]
+
+
+@dataclass
+class EngineResult:
+    items: list[Recommendation]
+    model_version: str
+    latency_ms: float
+    candidate_count: int
+    source_mix: dict[str, int] = field(default_factory=dict)
+    cold_start: bool = False
+
+
+_NOT_RECOMMENDABLE = re.compile(
+    r"\b(membership|subscription|gift\s*card|points?\s*card|cash\s*card|live\s*gold|psn\s*card|eshop\s*card"
+    r"|season\s*pass|expansion\s*pass|booster\s*course\s*pass|dlc|add-?on|downloadable\s*content|virtual\s*currency"
+    r"|v-?bucks|coins?\s*pack|points?\s*pack"
+    # accessories Amazon files under "Games"
+    r"|collectible\s*case|case\s+for|controller|headset|charg(?:er|ing)|amiibo|figurine|console\s*bundle"
+    r"|fight\s*stick|arcade\s*stick|starship\s*pack|weapon\s*pack)\b",
+    re.I,
+)
+
+
+def _norm(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
+
+
+class CrossVerseEngine:
+    def __init__(self, catalog: Catalog, retrievers: dict[str, Retriever], ranker: LightGBMRanker | RoutedRanker | None,
+                 per_source: int = 100, diversity_lambda: float = 0.15, version: str = "dev",
+                 metadata: dict[str, Any] | None = None):
+        self.catalog = catalog
+        self.retrievers = retrievers
+        self.ranker = ranker
+        self.version = version
+        self.metadata = metadata or {}
+        self.diversity_lambda = diversity_lambda
+        content = retrievers["content"]
+        copref = retrievers["copref"]
+        assert isinstance(content, ContentRetriever) and isinstance(copref, CoPreferenceRetriever)
+        self.content = content
+        self.copref = copref
+        self.generator = CandidateGenerator(catalog, retrievers, per_source=per_source)
+        pop = retrievers["popularity"].scores_  # type: ignore[attr-defined]
+        self.popularity = np.expm1(pop)
+        self.features = FeatureBuilder(catalog, content, copref, self.popularity, list(retrievers))
+        self.explainer = Explainer(catalog, content, copref)
+        items = catalog.items
+        self._titles = items["title"].to_numpy()
+        self._norm_titles = np.array([_norm(t) for t in self._titles])
+        self._creators = items.get("creator", items["title"].map(lambda _: "")).fillna("").astype(str).to_numpy()
+
+    # ------------------------------------------------------------------------------------------
+    # Core ranking
+    # ------------------------------------------------------------------------------------------
+    def ineligible(self) -> np.ndarray:
+        """Catalog items that are never recommended: memberships, gift/points cards and add-on
+        content that is useless without a base game (DLC, season passes). Lazy for old pickles."""
+        if "_ineligible" not in self.__dict__:
+            # "Fallout 4 Game + Season Pass" is the game plus an extra: keep it.
+            hit = np.array([bool(_NOT_RECOMMENDABLE.search(t)) and " + " not in t for t in self._titles])
+            self.__dict__["_ineligible"] = np.flatnonzero(hit & (self.catalog.domain == 1))
+        return self.__dict__["_ineligible"]
+
+    def rank(self, history: History, target_domain: str | None, k: int, exclude: np.ndarray | None = None,
+             preferences: list[str] | None = None, free_text: str = "", use_ranker: bool = True,
+             diversify_results: bool = True):
+        blocked = self.ineligible()
+        exclude = blocked if exclude is None else np.union1d(exclude, blocked)
+        cands = self.generator.generate(history, target_domain, exclude, preferences, free_text)
+        if self.ranker is not None and use_ranker and len(cands.idx):
+            X = self.features.build(history, cands, preferences)
+            scores = self.ranker.predict(X)
+        else:  # fallback: reciprocal-rank fusion of retrievers
+            scores = np.zeros(len(cands.idx))
+            for r in cands.ranks.values():
+                scores += 1.0 / (60.0 + r)
+        if len(history) == 0 and (preferences or free_text) and len(cands.idx):
+            # Explicit-intent rule: a cold-start user who asked for "cyberpunk" sees cyberpunk
+            # titles first whenever at least k candidates match. (Offline this costs a little
+            # NDCG versus pure popularity; see reports/benchmark.md.)
+            n_match = self.generator.theme_match(preferences, free_text)[cands.idx]
+            if (n_match > 0).sum() >= k:
+                # Tiers: items matching more of the requested themes first, ranker order within a tier.
+                scores = scores + 1e3 * n_match
+        if not diversify_results:
+            return cands, scores, np.argsort(-scores)[:k]
+        if target_domain in (None, "both", "all"):
+            order = self._domain_quota_order(history, cands.idx, scores, k)
+        else:
+            order = diversify(cands.idx, scores, self.content.embeddings_, k, self.diversity_lambda, self._creators)
+        return cands, scores, order
+
+    def _domain_quota_order(self, history: History, idx: np.ndarray, scores: np.ndarray, k: int,
+                            min_share: float = 0.3) -> np.ndarray:
+        """Business rule for unified lists: each domain gets a quota from the profile's domain mix
+        (at least `min_share`), so one domain's score scale cannot crowd out the other."""
+        pos = history.positives()
+        game_share = float(self.catalog.domain[pos.idx].mean()) if len(pos) else 0.5
+        game_share = min(max(game_share, min_share), 1 - min_share)
+        quota = {1: int(round(k * game_share))}
+        quota[0] = k - quota[1]
+        parts = []
+        for d in (0, 1):
+            sel = np.flatnonzero(self.catalog.domain[idx] == d)
+            if len(sel) == 0:
+                continue
+            o = diversify(idx[sel], scores[sel], self.content.embeddings_, quota[d], self.diversity_lambda,
+                          self._creators)
+            parts.append(sel[o])
+        merged = np.concatenate(parts) if parts else np.zeros(0, dtype=np.int64)
+        if len(merged) < k:  # one domain ran short: back-fill from the best remaining candidates
+            rest = [j for j in np.argsort(-scores) if j not in set(merged.tolist())]
+            merged = np.concatenate([merged, np.asarray(rest[: k - len(merged)], dtype=np.int64)])
+        return merged[np.argsort(-scores[merged], kind="stable")]
+
+    def recommend_case(self, case: EvalCase, target_domain: str | None, k: int, **kw) -> np.ndarray:
+        """Offline-evaluation adapter (returns catalog indices)."""
+        cands, scores, order = self.rank(case.history, target_domain, k, case.exclude, case.preferences, **kw)
+        return cands.idx[order]
+
+    # ------------------------------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------------------------------
+    def build_history(self, liked: list[tuple[str, float]], disliked: list[str] | None = None) -> History:
+        ids = [i for i, _ in liked] + list(disliked or [])
+        ratings = [r for _, r in liked] + [1.0] * len(disliked or [])
+        return History.from_pairs(self.catalog, ids, ratings)
+
+    def recommend(self, liked: list[tuple[str, float]], disliked: list[str] | None = None,
+                  target_domain: str | None = None, k: int = 10, preferences: list[str] | None = None,
+                  free_text: str = "", exclude_ids: list[str] | None = None, explain: bool = True,
+                  diversify_results: bool = True) -> EngineResult:
+        t0 = time.perf_counter()
+        history = self.build_history(liked, disliked)
+        exclude = np.unique(np.concatenate([history.idx, self.catalog.idx(exclude_ids or [])]))
+        cold = len(history) == 0
+        cands, scores, order = self.rank(history, target_domain, k, exclude, preferences, free_text,
+                                         diversify_results=diversify_results)
+        out = []
+        mix: dict[str, int] = {}
+        for rank, j in enumerate(order):
+            i = int(cands.idx[j])
+            row = self.catalog.items.iloc[i]
+            srcs = cands.sources[j]
+            for s in srcs:
+                mix[s] = mix.get(s, 0) + 1
+            ev = self.explainer.explain(history, i, srcs, preferences, float(scores[j])) if explain else {}
+            year = int(row["year"]) if row["year"] and row["year"] > 0 else None
+            out.append(
+                Recommendation(
+                    recommendation_id=uuid.uuid4().hex[:16], item_id=str(row["item_id"]), title=str(row["title"]),
+                    domain=str(row["domain"]), rank=rank + 1, score=float(scores[j]), sources=srcs,
+                    themes=list(row["themes"]), year=year, evidence=ev,
+                )
+            )
+        return EngineResult(out, self.version, (time.perf_counter() - t0) * 1000, len(cands.idx), mix, cold)
+
+    def similar(self, item_id: str, k: int = 10) -> dict[str, list[dict[str, Any]]]:
+        """Same-domain and cross-domain neighbours of one item (behaviour + content blend)."""
+        i = self.catalog.index[item_id]
+        h = History(np.array([i]), np.array([1.0], dtype=np.float32))
+        sem = self.content.score(h)
+        beh = np.zeros_like(sem)
+        knn = self.retrievers.get("item_knn")
+        if isinstance(knn, ItemKNNRetriever):
+            beh = knn.score(h)
+        cross = self.copref.score(h)
+
+        def z(x: np.ndarray, m: np.ndarray) -> np.ndarray:
+            v = x[m]
+            sd = v.std()
+            out = np.zeros_like(x)
+            out[m] = (v - v.mean()) / sd if sd > 0 else 0.0
+            return out
+
+        dom = self.catalog.domain[i]
+        same_m = self.catalog.domain == dom
+        other_m = ~same_m
+        same_score = z(sem, same_m) + z(beh, same_m)
+        other_score = z(sem, other_m) + z(cross, other_m) + 0.5 * z(beh, other_m)
+        excl = np.array([i])
+
+        def pack(idx: np.ndarray, score: np.ndarray) -> list[dict[str, Any]]:
+            res = []
+            for j in idx:
+                ev = self.explainer.explain(h, int(j), ["similar"])
+                res.append({**self.item_dict(int(j)), "score": float(score[j]), "evidence": ev})
+            return res
+
+        return {
+            "item": [self.item_dict(i)],
+            "same_domain": pack(top_k(same_score, k, same_m, excl), same_score),
+            "cross_domain": pack(top_k(other_score, k, other_m, excl), other_score),
+        }
+
+    def item_dict(self, i: int) -> dict[str, Any]:
+        row = self.catalog.items.iloc[i]
+        return {
+            "item_id": str(row["item_id"]), "title": str(row["title"]), "domain": str(row["domain"]),
+            "themes": list(row["themes"]), "year": int(row["year"]) if row["year"] and row["year"] > 0 else None,
+            "popularity": int(self.popularity[i]),
+        }
+
+    def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
+        q = _norm(query)
+        if not q:
+            return []
+        index = self._prefix_index()
+        sets = [index.get(t[:12], set()) for t in q.split()]
+        if any(len(t) > 12 for t in q.split()):  # long tokens: verify the full token on the shortlist
+            cand = set.intersection(*sets) if sets else set()
+            sets = [{i for i in cand if all(any(w.startswith(t) for w in self._norm_titles[i].split())
+                                               for t in q.split())}]
+        hits = set.intersection(*sets) if sets else set()
+        mask = self.catalog.mask(domain)
+        idx = np.array(sorted(i for i in hits if mask[i]), dtype=np.int64)
+        if not len(idx):
+            return []
+        exact = np.array([self._norm_titles[i] == q for i in idx])
+        prefix = np.array([self._norm_titles[i].startswith(q) for i in idx])
+        key = exact * 1e9 + prefix * 1e6 + self.popularity[idx]
+        return [self.item_dict(int(i)) for i in idx[np.argsort(-key)][:limit]]
+
+    def _prefix_index(self) -> dict[str, set[int]]:
+        """Title-token prefix -> item indices (type-ahead search). Built lazily on first use."""
+        if "_prefix" not in self.__dict__:
+            index: dict[str, set[int]] = {}
+            for i, title in enumerate(self._norm_titles):
+                for word in title.split():
+                    for n in range(1, min(len(word), 12) + 1):
+                        index.setdefault(word[:n], set()).add(i)
+            self.__dict__["_prefix"] = index
+        return self.__dict__["_prefix"]
+
+    def suggest(self, query: str, domain: str | None = None, n: int = 3) -> list[dict[str, Any]]:
+        """'Did you mean' for unresolved titles: candidates sharing a token prefix, ranked by similarity."""
+        from difflib import SequenceMatcher
+
+        q = _norm(query)
+        index = self._prefix_index()
+        cand: set[int] = set()
+        for tok in q.split():
+            if len(tok) >= 3:
+                cand |= index.get(tok[:4] if len(tok) >= 4 else tok, set())
+        mask = self.catalog.mask(domain)
+        scored = [(SequenceMatcher(None, q, self._norm_titles[i]).ratio(), self.popularity[i], i)
+                  for i in cand if mask[i]]
+        scored.sort(reverse=True)
+        return [self.item_dict(i) for s, _, i in scored[:n] if s >= 0.5]
+
+    def resolve(self, name_or_id: str, domain: str | None = None) -> str | None:
+        if name_or_id in self.catalog.index:
+            return name_or_id
+        hits = self.search(name_or_id, domain, 1)
+        return hits[0]["item_id"] if hits else None
+
+    # ------------------------------------------------------------------------------------------
+    def save(self, path: Path) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "wb") as fh:
+            pickle.dump(self, fh, protocol=pickle.HIGHEST_PROTOCOL)
+
+    @staticmethod
+    def load(path: Path) -> CrossVerseEngine:
+        with open(path, "rb") as fh:
+            return pickle.load(fh)

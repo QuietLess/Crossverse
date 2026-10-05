@@ -1,0 +1,59 @@
+# Full stack: API + web + Postgres + Redis + Prometheus + Grafana.
+#   make train publish        # produce artifacts/models/PRODUCTION first
+#   docker compose -f infra/docker-compose.yml up --build
+services:
+  api:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    environment:
+      CROSSVERSE_ARTIFACTS_DIR: /app/artifacts
+      CROSSVERSE_DATABASE_URL: postgresql://crossverse:crossverse@postgres:5432/crossverse
+      CROSSVERSE_REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ../artifacts:/app/artifacts
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  web:
+    build: { context: .., dockerfile: infra/Dockerfile }
+    command: ["streamlit", "run", "apps/web/app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+    environment:
+      CROSSVERSE_API_URL: http://api:8000
+    ports: ["8501:8501"]
+    depends_on: [api]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crossverse
+      POSTGRES_PASSWORD: crossverse
+      POSTGRES_DB: crossverse
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crossverse"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    depends_on: [api]
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports: ["3000:3000"]
+    depends_on: [prometheus]
+
+volumes:
+  pgdata:

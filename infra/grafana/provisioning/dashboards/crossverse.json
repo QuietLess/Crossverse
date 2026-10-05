@@ -1,0 +1,272 @@
+{
+  "uid": "crossverse",
+  "title": "CrossVerse \u2014 service & recommendation quality",
+  "schemaVersion": 39,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Request rate",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (endpoint) (rate(crossverse_requests_total[5m]))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "p95 latency",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le, endpoint) (rate(crossverse_request_latency_seconds_bucket[5m])))",
+          "legendFormat": "{{endpoint}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Error rate (5xx)",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(sum(rate(crossverse_requests_total{status=~\"5..\"}[5m])) or vector(0)) / sum(rate(crossverse_requests_total[5m]))",
+          "legendFormat": "5xx share"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Catalog coverage (rolling)",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "crossverse_catalog_coverage_ratio",
+          "legendFormat": "coverage"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Model version",
+      "gridPos": {
+        "x": 18,
+        "y": 8,
+        "w": 6,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "crossverse_model_info",
+          "legendFormat": "{{version}}"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Candidate-source mix",
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(crossverse_candidate_source_total[15m]))",
+          "legendFormat": "{{source}}"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Recommendations by mode / domain",
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (mode, domain) (rate(crossverse_recommendations_total[15m]))",
+          "legendFormat": "{{mode}} \u2192 {{domain}}"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Feedback events",
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (event) (rate(crossverse_feedback_total[15m]))",
+          "legendFormat": "{{event}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Cold-start & unknown items",
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(crossverse_cold_start_requests_total[15m])",
+          "legendFormat": "cold start"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(crossverse_unknown_items_total[15m])",
+          "legendFormat": "unknown items"
+        }
+      ]
+    }
+  ],
+  "tags": [
+    "crossverse"
+  ]
+}

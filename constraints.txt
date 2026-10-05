@@ -1,0 +1,28 @@
+# Tested dependency versions (CI and Docker install with `-c constraints.txt`).
+# Regenerate after deliberately upgrading, then re-run the full test + type-check suite.
+numpy==2.4.1
+pandas==2.3.3
+pyarrow==23.0.0
+scipy==1.17.1
+scikit-learn==1.8.0
+lightgbm==4.6.0
+requests==2.32.5
+fastapi==0.142.2
+uvicorn==0.54.0
+pydantic==2.13.5
+prometheus-client==0.26.0
+threadpoolctl==3.6.0
+streamlit==1.53.1
+psycopg==3.3.6
+psycopg-binary==3.3.6
+redis==8.1.0
+pytest==9.1.1
+httpx==0.28.1
+ruff==0.16.10
+mypy==2.4.0
+starlette==1.7.0
+pydantic-core==2.46.5
+anyio==4.15.1
+h11==0.16.0
+joblib==1.5.3
+narwhals==2.15.0
