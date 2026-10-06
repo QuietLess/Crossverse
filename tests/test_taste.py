@@ -23,7 +23,9 @@ def test_percentile_is_rank_normalised():
     ("Hostiles", False),
     ("The Two Towers", False),
     ("Five Easy Pieces", False),
-    ("Looney Tunes: Golden Collection", False),
+    ("The Louis L' Amour Collection", True),
+    ("Looney Tunes: Golden Collection", True),  # a set of shorts is a compilation too
+    ("Collection of Short Stories: The Movie", False),
 ])
 def test_compilation_titles(title, is_compilation):
     assert bool(_COMPILATION.search(title)) is is_compilation
@@ -76,3 +78,17 @@ def test_api_accepts_taste(trained, small_settings):
             r = client.post(path, json={"liked": [{"item": title}], "k": 3, "taste": 0.7})
             assert r.status_code in (200, 422), r.text  # 422 only when the title is in the other domain
         assert client.post("/recommend", json={"liked": [{"item": title}], "taste": 1.5}).status_code == 422
+
+
+def test_tv_season_sets_are_not_compilations(trained, monkeypatch):
+    engine, _, _ = trained
+    titles = engine._titles.copy()
+    movie = int(np.flatnonzero(engine.catalog.domain == 0)[0])
+    titles[movie] = "Stargate SG-1 Complete Series Seasons 1-10 Collection"
+    monkeypatch.setattr(engine, "_titles", titles)
+    monkeypatch.delitem(engine.__dict__, "_compilations", raising=False)
+    assert movie not in engine.compilations()
+    titles[movie] = "Harry Potter: Complete 8-Film Collection"
+    monkeypatch.delitem(engine.__dict__, "_compilations", raising=False)
+    assert movie in engine.compilations()
+    monkeypatch.delitem(engine.__dict__, "_compilations", raising=False)

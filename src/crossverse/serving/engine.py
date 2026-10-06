@@ -76,9 +76,12 @@ TASTE_MIN_FANS = 20  # taste mode only promotes titles at least this many traini
 _COMPILATION = re.compile(
     r"\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(?:film|movie|feature)s?\b|\btrilogy\b|\bquadrilogy\b"
     r"|\banthology\b|\b(?:double|triple)\s+feature\b|\bfavorites\b|\bbox\s*set\b|\bmovie\s+collection\b"
-    r"|\bcomplete\s+(?:saga|collection)\b|\bcollection\s*\(|\s/\s.+\s/\s",
+    r"|\bcomplete\s+(?:saga|collection)\b|\bcollection\s*(?:\(|$)|\s/\s.+\s/\s",
     re.I,
 )
+
+
+_TV_SET = re.compile(r"\bseasons?\b|\bseries\b", re.I)
 
 
 def _percentile(x: np.ndarray) -> np.ndarray:
@@ -154,7 +157,8 @@ class CrossVerseEngine:
         """Movie box sets and multi-film packs ("Complete 8-Film Collection", "Trilogy", "A / B / C").
         Not recommended: they bundle works the user may already know and crowd out single titles."""
         if "_compilations" not in self.__dict__:
-            hit = np.array([bool(_COMPILATION.search(t)) for t in self._titles])
+            # A TV show's season set *is* the show (seasons are merged into one item): keep it.
+            hit = np.array([bool(_COMPILATION.search(t)) and not _TV_SET.search(t) for t in self._titles])
             self.__dict__["_compilations"] = np.flatnonzero(hit & (self.catalog.domain == 0))
         return self.__dict__["_compilations"]
 
