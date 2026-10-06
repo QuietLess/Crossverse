@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
@@ -58,13 +59,34 @@ def download(raw_dir: Path, core: str = "0core", force: bool = False) -> list[Pa
                 continue
             log.info("downloading %s", url)
             tmp = dest.with_suffix(dest.suffix + ".part")
-            with requests.get(url, stream=True, timeout=60) as r:
-                r.raise_for_status()
-                with open(tmp, "wb") as fh:
-                    for chunk in r.iter_content(chunk_size=1 << 20):
-                        fh.write(chunk)
+            _download_resumable(url, tmp)
             tmp.replace(dest)
     return out
+
+
+def _download_resumable(url: str, tmp: Path, attempts: int = 10) -> None:
+    """Stream url into tmp, resuming from tmp's size after a dropped connection (the UCSD mirror stalls
+    on long transfers). Falls back to a full restart if the server ignores the Range header."""
+    for attempt in range(1, attempts + 1):
+        done = tmp.stat().st_size if tmp.exists() else 0
+        headers = {"Range": f"bytes={done}-"} if done else {}
+        try:
+            with requests.get(url, stream=True, timeout=60, headers=headers) as r:
+                if r.status_code == 416:  # range starts at the end: already complete
+                    return
+                r.raise_for_status()
+                resumed = r.status_code == 206
+                expected = int(r.headers.get("Content-Length", 0)) + (done if resumed else 0)
+                with open(tmp, "ab" if resumed else "wb") as fh:
+                    for chunk in r.iter_content(chunk_size=1 << 20):
+                        fh.write(chunk)
+            if not expected or tmp.stat().st_size == expected:
+                return
+            log.warning("%s: got %d of %d bytes, resuming", tmp.name, tmp.stat().st_size, expected)
+        except requests.RequestException as e:
+            log.warning("%s: attempt %d/%d failed (%s), resuming", tmp.name, attempt, attempts, e)
+        time.sleep(min(2**attempt, 30))
+    raise RuntimeError(f"download of {url} did not complete after {attempts} attempts")
 
 
 # --------------------------------------------------------------------------------------------
