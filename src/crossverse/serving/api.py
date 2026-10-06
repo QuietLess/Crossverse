@@ -76,6 +76,7 @@ class RecItem(BaseModel):
     themes: list[str]
     year: int | None
     evidence: dict[str, Any]
+    image: str | None = Field(None, description="cover image URL (Amazon product image), if known")
 
 
 class RecommendResponse(BaseModel):

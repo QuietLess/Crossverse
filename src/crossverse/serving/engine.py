@@ -38,6 +38,7 @@ class Recommendation:
     themes: list[str]
     year: int | None
     evidence: dict[str, Any]
+    image: str | None = None
 
 
 @dataclass
@@ -68,6 +69,12 @@ def _norm(s: str) -> str:
 _TRAILING_YEAR = re.compile(r"\s*[(\[]\s*((?:18|19|20)\d\d)\s*[)\]]\s*$")
 _DOMAIN_PREFIX = re.compile(r"^\s*(movie|film|tv|show|game)\s*:\s*", re.I)
 _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "movie", "game": "game"}
+
+
+def _image(row: Any) -> str | None:
+    """Cover image URL; catalogs built before images were collected have no column."""
+    url = row.get("image") if hasattr(row, "get") else None
+    return str(url) if isinstance(url, str) and url else None
 
 
 def _match_key(title: str) -> str:
@@ -215,7 +222,7 @@ class CrossVerseEngine:
                 Recommendation(
                     recommendation_id=uuid.uuid4().hex[:16], item_id=str(row["item_id"]), title=str(row["title"]),
                     domain=str(row["domain"]), rank=rank + 1, score=float(scores[j]), sources=srcs,
-                    themes=list(row["themes"]), year=year, evidence=ev,
+                    themes=list(row["themes"]), year=year, evidence=ev, image=_image(row),
                 )
             )
         return EngineResult(out, self.version, (time.perf_counter() - t0) * 1000, len(cands.idx), mix, cold)
@@ -263,7 +270,7 @@ class CrossVerseEngine:
         return {
             "item_id": str(row["item_id"]), "title": str(row["title"]), "domain": str(row["domain"]),
             "themes": list(row["themes"]), "year": int(row["year"]) if row["year"] and row["year"] > 0 else None,
-            "popularity": int(self.popularity[i]),
+            "popularity": int(self.popularity[i]), "image": _image(row),
         }
 
     @property

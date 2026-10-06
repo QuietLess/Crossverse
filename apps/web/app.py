@@ -87,6 +87,15 @@ def picker(label: str, domain: str | None, key: str, default: list[str] | None =
     return st.session_state[key]
 
 
+def cover(item: dict, width: int) -> None:
+    """Cover image, or the domain icon when the catalog has none (models built before images existed)."""
+    if item.get("image"):
+        st.image(item["image"], width=width)
+    else:
+        st.markdown(f"<div style='font-size:{width // 2}px;text-align:center'>{DOMAIN_ICON[item['domain']]}</div>",
+                    unsafe_allow_html=True)
+
+
 def render_results(body: dict | None) -> None:
     if not body:
         return
@@ -107,7 +116,9 @@ def render_results(body: dict | None) -> None:
         ev = item["evidence"]
         conf = {"high": "🟢", "medium": "🟡", "low": "⚪"}.get(ev.get("reason_confidence"), "")
         with st.container(border=True):
-            c1, c2 = st.columns([5, 1])
+            c0, c1, c2 = st.columns([1, 5, 1])
+            with c0:
+                cover(item, 90)
             with c1:
                 year = f" ({item['year']})" if item.get("year") and str(item["year"]) not in item["title"] else ""
                 st.markdown(f"**{item['rank']}. {DOMAIN_ICON[item['domain']]} {item['title']}**{year}")
@@ -172,8 +183,12 @@ with tabs[3]:
                 with col:
                     st.subheader(label)
                     for n, r in enumerate(res[key], 1):
-                        st.markdown(f"{n}. {DOMAIN_ICON[r['domain']]} **{r['title']}** — {', '.join(r['themes'][:3])}")
-                        st.caption(r["evidence"]["summary"])
+                        img, text = st.columns([1, 5])
+                        with img:
+                            cover(r, 60)
+                        with text:
+                            st.markdown(f"{n}. {DOMAIN_ICON[r['domain']]} **{r['title']}** — {', '.join(r['themes'][:3])}")
+                            st.caption(r["evidence"]["summary"])
 
 with tabs[4]:
     themes = call("GET", "/themes") or []

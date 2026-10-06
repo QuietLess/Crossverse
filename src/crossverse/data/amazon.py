@@ -226,6 +226,17 @@ def iter_metadata(path: Path, wanted: set[str]) -> Iterable[dict]:
             yield json.loads(line)
 
 
+def _main_image(rec: dict) -> str:
+    """URL of the product's main image (cover / box art); "" if none. Prefers the MAIN variant."""
+    images = [im for im in rec.get("images") or [] if isinstance(im, dict)]
+    images.sort(key=lambda im: im.get("variant") != "MAIN")
+    for im in images:
+        url = im.get("large") or im.get("hi_res") or im.get("thumb")
+        if isinstance(url, str) and url.startswith("https://"):
+            return url
+    return ""
+
+
 def load_metadata(raw_dir: Path, wanted: dict[str, set[str]]) -> pd.DataFrame:
     rows = []
     for domain, category in CATEGORIES.items():
@@ -263,6 +274,7 @@ def load_metadata(raw_dir: Path, wanted: dict[str, set[str]]) -> pd.DataFrame:
                     "year": _year_from_meta(rec),
                     "rating_number": rec.get("rating_number") or 0,
                     "main_category": rec.get("main_category") or "",
+                    "image": _main_image(rec),
                 }
             )
     return pd.DataFrame(rows)
@@ -295,6 +307,8 @@ def build_catalog(meta: pd.DataFrame, mapping: pd.DataFrame) -> pd.DataFrame:
                 "creator": head["creator"],
                 "year": int(years.min()) if len(years) else -1,
                 "n_products": len(g),
+                # most-reviewed product with an image: the edition people actually bought
+                "image": next((u for u in g["image"] if u), "") if "image" in g else "",
             }
         )
     catalog = pd.DataFrame(rows)
