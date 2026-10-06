@@ -6,9 +6,9 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 # data and models are reproducible from code; never commit third-party datasets
-data/
-artifacts/
-logs/
+/data/
+/artifacts/
+/logs/
 mlruns/
 *.db
 .env
