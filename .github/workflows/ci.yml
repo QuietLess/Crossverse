@@ -1,9 +1,16 @@
 name: CI
 
+# Every branch push runs CI; a PR shows the result of its head commit's push run, so no separate
+# pull_request trigger (that would run everything twice for branches in this repo).
 on:
   push:
-    branches: [main]
-  pull_request:
+    branches: ["**"]
+  workflow_dispatch:
+
+# A newer push to the same branch supersedes the running checks.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   lint-test:
@@ -25,8 +32,8 @@ jobs:
       CROSSVERSE_TEST_PG_URL: postgresql://crossverse:crossverse@localhost:5432/crossverse
       CROSSVERSE_TEST_REDIS_URL: redis://localhost:6379/15
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -48,8 +55,8 @@ jobs:
       CROSSVERSE_ALS_ITERATIONS: "4"
       CROSSVERSE_RANKER_QUERIES_PER_TASK: "300"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -58,15 +65,16 @@ jobs:
       - run: python pipelines/train.py --version ci --max-eval-cases 300
       - run: python pipelines/evaluate.py --version ci --error-cases 5
       - run: python pipelines/publish.py --version ci
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: benchmark
           path: reports/
 
   secret-scan:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
@@ -81,8 +89,8 @@ jobs:
       CROSSVERSE_ALS_ITERATIONS: "2"
       CROSSVERSE_RANKER_QUERIES_PER_TASK: "200"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
       - run: pip install -e . -c constraints.txt
