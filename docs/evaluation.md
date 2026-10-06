@@ -79,6 +79,7 @@ statistical tie with popularity (−1%, n.s.).
 | **v7** | ds3 | v4 recipe after removing misfiled DVDs from the game catalog | all behavioural tasks significantly above popularity; cold start ties; **production** |
 | v9 | ds4 | v7 recipe on ds4: edition grouping fixes, theme-tagging fixes, cover images | within-domain/mixed −7–10% and games→movies +7% in aggregate, but only ~7% of test users overlap with v7; on shared users no task differs significantly. Movies→games no longer significant (+9%); cold start −42% vs popularity (significant). **Not promoted** (candidate) |
 | v9a | ds4′ | ablation: v9 with the old theme rules, identical test users | within noise of v9 on every task (cold start −49%); the theme rules are neutral, the cold-start drop comes with ds4 |
+| v10 | ds4 | v9 + minimum support for co-like pairs (kNN ≥ 2 users, co-preference ≥ 3 bridge users) | identical test users as v9: no task differs significantly (all within ±0.0022). The retrievers themselves improve a lot: co-preference alone 10–20× on movies→games / games→movies (0.0018 → 0.0183, 0.0008 → 0.0159), kNN 2–4× cross-domain and +6–7% within-domain; the ranker had already learned to discount the noisy pairs. Candidate |
 
 Each candidate (v4–v6) was fixed before its test results were seen, so the test set was not used
 for tuning. v2–v7 were all evaluated with the final serving code (eligibility filter, cold-start
