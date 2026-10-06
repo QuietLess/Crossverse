@@ -13,6 +13,7 @@ import streamlit as st
 
 API = os.environ.get("CROSSVERSE_API_URL", "http://localhost:8000")
 DOMAIN_ICON = {"movie": "🎬", "game": "🎮"}
+TASTE_DEFAULT = 0.5
 
 st.set_page_config(page_title="CrossVerse", page_icon="🎬", layout="wide")
 
@@ -144,6 +145,12 @@ st.title("CrossVerse")
 st.markdown("*If you liked this movie, what game should you play next — and vice versa?*")
 st.sidebar.markdown(f"Backend: **{backend_mode()}**" + (f" (`{API}`)" if backend_mode() == "api" else " (in-process engine)"))
 k = st.sidebar.slider("How many recommendations", 5, 30, 10)
+taste = st.sidebar.slider(
+    "Recommendation style", 0.0, 1.0, TASTE_DEFAULT, 0.1,
+    help="0 = what fans with a similar history liked (often popular titles). "
+         "1 = most similar story, setting and themes among well-liked titles. In between: a blend.",
+)
+st.sidebar.caption("◀ popular with similar fans · similar story & setting ▶")
 
 tabs = st.tabs(["🎬 → 🎮 Movie to Game", "🎮 → 🎬 Game to Movie", "🔀 Mixed profile", "🔎 Similar items",
                 "✨ Cold start", "📊 Admin"])
@@ -152,13 +159,13 @@ with tabs[0]:
     liked = picker("Movies / series you love", "movie", "m2g", ["Blade Runner 2049", "Ex Machina"])
     if st.button("Recommend games", type="primary", disabled=not liked):
         render_results(call("POST", "/recommend/movie-to-game",
-                            json={"liked": [{"item": x["item_id"]} for x in liked], "k": k}))
+                            json={"liked": [{"item": x["item_id"]} for x in liked], "k": k, "taste": taste}))
 
 with tabs[1]:
     liked = picker("Games you love", "game", "g2m", ["Witcher 3: Wild Hunt", "Baldur's Gate"])
     if st.button("Recommend movies & series", type="primary", disabled=not liked):
         render_results(call("POST", "/recommend/game-to-movie",
-                            json={"liked": [{"item": x["item_id"]} for x in liked], "k": k}))
+                            json={"liked": [{"item": x["item_id"]} for x in liked], "k": k, "taste": taste}))
 
 with tabs[2]:
     c1, c2 = st.columns(2)
@@ -170,7 +177,7 @@ with tabs[2]:
     if st.button("Build my profile", type="primary", disabled=not liked):
         render_results(call("POST", "/recommend", json={
             "liked": [{"item": x["item_id"]} for x in liked], "disliked": [x["item_id"] for x in disliked],
-            "target_domain": None if target == "both" else target, "k": k}))
+            "target_domain": None if target == "both" else target, "k": k, "taste": taste}))
 
 with tabs[3]:
     dom = st.radio("Domain", ["movie", "game"], horizontal=True, key="sim_dom")

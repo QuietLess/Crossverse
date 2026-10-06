@@ -57,7 +57,11 @@ class CandidateGenerator:
         return (content.theme_matrix_[:, cols] > 0).sum(axis=1).astype(np.float32)
 
     def generate(self, history: History, target_domain: str | None, exclude: np.ndarray | None = None,
-                 preferences: list[str] | None = None, free_text: str = "") -> CandidateSet:
+                 preferences: list[str] | None = None, free_text: str = "",
+                 quality: np.ndarray | None = None) -> CandidateSet:
+        """`quality` (bool per catalog item): also nominate the most content-similar items among these.
+        Raw content similarity favours obscure box sets with matching keywords; this adds the best
+        similar titles that enough people liked."""
         mask = self.catalog.mask(target_domain)
         full = self.all_scores(history, preferences, free_text)
         nominated: dict[int, list[str]] = {}
@@ -67,6 +71,10 @@ class CandidateGenerator:
             n = self.per_source if name != "popularity" else self.per_source // 2
             for i in top_k(s, n, mask=mask, exclude=exclude):
                 nominated.setdefault(int(i), []).append(name)
+        if quality is not None and "content" in full:
+            for i in top_k(full["content"], self.per_source, mask=mask & quality, exclude=exclude):
+                if "content" not in nominated.setdefault(int(i), []):
+                    nominated[int(i)].append("content")
         if not nominated:  # nothing at all (empty history, no preferences): popularity fallback
             for i in top_k(full["popularity"], self.per_source, mask=mask, exclude=exclude):
                 nominated.setdefault(int(i), []).append("popularity")
