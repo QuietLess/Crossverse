@@ -170,6 +170,10 @@ reports/                      per-version benchmarks, significance, error analys
   Unknown titles get "did you mean" suggestions instead of silent substitutions.
 * The Docker image and `docker compose up` were not run (no virtualisation on the dev machine);
   every service in the stack was verified natively at the same versions instead.
+* The ranker learns "what Amazon buyers bought next", which with weak cross-domain signal means
+  bestsellers (Red Dead Redemption 2 → Game of Thrones). A `taste` setting (UI slider, API field)
+  blends in story/setting similarity among well-liked titles (→ Justified, Tombstone, Longmire);
+  it costs offline NDCG, measured in [docs/evaluation.md](docs/evaluation.md#serving-settings-taste-and-compilations).
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
   catalog scale.
 

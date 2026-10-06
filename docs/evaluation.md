@@ -87,6 +87,29 @@ tiers). v1's report predates those rules and is kept for history only. Models tr
 datasets are never compared by the gate. A dataset migration is promoted explicitly
 (`publish.py --force`) after the new baseline's own benchmark has been reviewed.
 
+## Serving settings: taste and compilations
+
+Measured on v10 with `scripts/serving_settings_benchmark.py` (same 17,010 test users for every
+setting; per-user rows in `reports/v10/serving_settings_cases.csv.gz`). "Shares a theme" is the
+share of recommendations carrying a specific (non-generic) theme of the user's history: it
+describes how on-topic the list is, not whether it is good.
+
+| task | NDCG@10 before | no compilations | taste 0.3 | taste 0.5 | taste 1.0 | shares a theme: before → taste 0.5 |
+|---|---:|---:|---:|---:|---:|---|
+| games → movies | 0.0279 | 0.0270 | 0.0214 | 0.0183 | 0.0066 | 46% → 74% |
+| movies → games | 0.0344 | 0.0344 | 0.0234 | 0.0181 | 0.0055 | 54% → 78% |
+| within movies | 0.0431 | 0.0418 | 0.0255 | 0.0202 | 0.0084 | 70% → 79% |
+| within games | 0.0579 | 0.0579 | 0.0406 | 0.0353 | 0.0175 | 71% → 88% |
+| mixed | 0.0344 | 0.0336 | 0.0238 | 0.0201 | 0.0086 | 73% → 85% |
+
+* **Dropping movie compilations is nearly free**: −0.0013 NDCG at most, significant only on cold
+  start (−0.0005). It is on by default.
+* **Taste trades purchase prediction for topicality.** NDCG measures "will this user buy it on
+  Amazon", which rewards bestsellers; taste 0.5 costs 35–55% of it and makes 74–88% of the list
+  share a specific theme. Popularity of the picks barely moves (the ≥ 20-fans quality floor), and
+  at 1.0 keyword matches take over ("River Monsters" for The Witcher 3). The API default stays 0,
+  so every benchmark number in this document is the plain ranker; the demo UI defaults to 0.5.
+
 ## Qualitative analysis
 
 `reports/error_analysis.md` lists 50 random movie→game and 50 game→movie holdout users with their
