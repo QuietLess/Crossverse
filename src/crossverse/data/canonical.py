@@ -24,7 +24,7 @@ import numpy as np
 import pandas as pd
 
 _FORMAT = (
-    r"dvd|blu[\s-]?ray|bluray|4k(?:\s*ultra\s*hd)?|ultra\s*hd|uhd|hd\s*dvd|vhs|digital(?:\s*(?:copy|hd|code|download))?"
+    r"dvd|blu[\s-]?ray|bluray|4k(?:[\s-]*ultra[\s-]*hd)?|ultra[\s-]*hd|uhd|hd\s*dvd|vhs|digital(?:\s*(?:copy|hd|code|download))?"
     r"|widescreen|full\s*screen|fullscreen|region\s*\d|ntsc|pal|steelbook|3d|2d|dts|dolby|subtitled|dubbed"
     r"|prime\s*video|amazon\s*original|theatrical(?:\s*(?:cut|version))?|unrated|rated|import|multi[\s-]?format"
     r"|digibook|slipcover|combo(?:\s*pack)?|\d+\s*-?\s*discs?|\d+\s*-?\s*disc\s*set|box\s*set|boxed\s*set"
@@ -33,13 +33,14 @@ _PLATFORM = (
     r"ps[1-5]|ps\s*vita|psp|playstation(?:\s*[1-5])?(?:\s*vita|\s*portable)?|xbox(?:\s*(?:one|360|series\s*[xs](?:\s*\|\s*[xs])?))?"
     r"|nintendo\s*(?:switch|3ds|ds|wii\s*u|wii|64|gamecube)|switch|3ds|nds|wii\s*u|wii|gamecube|n64|game\s*boy(?:\s*(?:advance|color))?"
     r"|pc(?:\s*(?:dvd|cd|download|code|online\s*game\s*code))?|mac|windows(?:\s*\d+)?|steam|online\s*game\s*code|game\s*code"
-    r"|sega\s*genesis|dreamcast|stadia"
+    r"|sega\s*genesis|dreamcast|stadia|ubisoft\s*connect|uplay|epic\s*games(?:\s*store)?|battle\.?net"
 )
 _EDITION_SUFFIX = r"(?:edition|collection|cut|version|pack)"
 _EDITION = (
     # Unambiguous on their own.
     r"(?:(?:game\s*of\s*the\s*year|goty|deluxe|collector'?s?|remastered|remaster|director'?s?\s*cut|criterion"
-    r"|greatest\s*hits|player'?s?\s*choice|steelbook|digital\s*deluxe|season\s*pass)"
+    r"|greatest\s*hits|player'?s?\s*choice|steelbook|digital\s*deluxe|season\s*pass"
+    r"|\d+(?:st|nd|rd|th)\s*anniversary)"  # "Jurassic Park 25th Anniversary Collection"
     rf"(?:\s*{_EDITION_SUFFIX})?"
     # Real title words too ("Midnight Special", "Gold", "Ultimate Spider-Man"): noise only with a suffix.
     r"|(?:standard|limited|special|complete|definitive|gold|ultimate|premium|day\s*one|launch|anniversary|extended"
@@ -65,6 +66,12 @@ _TOKENS = {
     "game": re.compile(rf"\b(?:{_FORMAT}|{_PLATFORM}|{_EDITION})\b", re.IGNORECASE),
 }
 _EDITION_WORDS = re.compile(r"\b(?:edition|version|collection|the\s*complete\s*series|complete\s*series)\b", re.I)
+# Films numbered by volume, where "Vol. 2" is a sequel, not a slice of a TV season. Title text can't tell
+# "Kill Bill, Vol. 1" from "Cowboy Bebop, Vol. 1"; a general fix needs external ids (TMDB).
+_FILM_VOLUMES = re.compile(r"^(?:the\s+)?(?:kill\s+bill|guardians\s+of\s+the\s+galaxy)\b")
+_VOLUME = re.compile(r"\b(?:vol(?:ume)?s?\.?|part)\s*(\d+|one|two|three|four)\b")
+_NUMBERS = {"one": "1", "two": "2", "three": "3", "four": "4"}
+_DANGLING = re.compile(r"\s+(?:the|a|an|and)$")  # "big bang theory the" after "..., The: The Complete Series"
 _YEAR = re.compile(r"\b(19[2-9]\d|20[0-3]\d)\b")
 _NON_ALNUM = re.compile(r"[^a-z0-9]+")
 _ROMAN = {"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10"}
@@ -106,6 +113,8 @@ def normalize_title(title: str, domain: str = "movie") -> str:
     stripped = _BRACKETS.sub(" ", t)
     if _NON_ALNUM.sub("", stripped):
         t = stripped
+    if domain == "movie" and _FILM_VOLUMES.match(t):
+        t = _VOLUME.sub(lambda m: f" {_NUMBERS.get(m.group(1), m.group(1))} ", t)
     t = _TOKENS[domain].sub(" ", t)
     t = _EDITION_WORDS.sub(" ", t)
     t = t.replace("'", "")
@@ -117,7 +126,9 @@ def normalize_title(title: str, domain: str = "movie") -> str:
     if domain == "game":
         # Budget re-release lines: "Ratchet & Clank (PS4) Hits", "Nintendo Selects: Lego City Undercover".
         t = re.sub(r"\s+hits$", "", re.sub(r"^nintendo\s+selects\s+", "", t))
-    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    while _DANGLING.search(t) and _DANGLING.sub("", t):
+        t = _DANGLING.sub("", t)
     if not t:  # the whole title was "noise" (e.g. a film literally called "Unrated")
         t = _NON_ALNUM.sub(" ", _strip_accents(title).lower()).strip()
     return t
@@ -138,6 +149,7 @@ _DISPLAY_NOISE = {
     "game": rf"(?:(?:sony|microsoft|origin|uplay)\s*)?(?:{_PLATFORM})(?:\s*(?:edition|version))?|{_GAME_FORMAT}"
             rf"|{_ANNIVERSARY}|{_EDITION}|game\s*only|physical(?:\s*edition)?",
 }
+_DISPLAY_NOISE["film-volume"] = _DISPLAY_NOISE["movie"].replace(f"|{_SEASON}", "")  # keep "Kill Bill: Vol. 2"
 _DISPLAY_TAIL = {d: re.compile(rf"(?:^|{_SEP}+)(?:{p})\.?{_SEP}*$", re.I) for d, p in _DISPLAY_NOISE.items()}
 # Leading platforms only when unambiguous: "Wii Sports" and "Switch 'n' Shoot" are names.
 _DISPLAY_HEAD = re.compile(
@@ -190,6 +202,8 @@ def _flip_article(m: re.Match[str]) -> str:
 
 
 def _display_once(title: str, domain: str) -> str:
+    if domain == "movie" and _FILM_VOLUMES.match(title.strip().lower()):
+        domain = "film-volume"
     tail = _DISPLAY_TAIL.get(domain, _DISPLAY_TAIL["movie"])
 
     year: str | None = None
