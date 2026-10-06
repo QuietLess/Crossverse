@@ -77,6 +77,8 @@ statistical tie with popularity (−1%, n.s.).
 | v5 | ds2 | + routed cross-domain specialist ranker, 2× ranker queries | cross-domain 0.0287 vs 0.0309: the specialist early-stops after ~11 trees → **blocked by gate** |
 | v6 | ds2 | + tuned retriever knobs (as in v3) | cross-domain 0.0264 vs 0.0309 → **blocked by gate** |
 | **v7** | ds3 | v4 recipe after removing misfiled DVDs from the game catalog | all behavioural tasks significantly above popularity; cold start ties; **production** |
+| v9 | ds4 | v7 recipe on ds4: edition grouping fixes, theme-tagging fixes, cover images | within-domain/mixed −7–10% and games→movies +7% in aggregate, but only ~7% of test users overlap with v7; on shared users no task differs significantly. Movies→games no longer significant (+9%); cold start −42% vs popularity (significant). **Not promoted** (candidate) |
+| v9a | ds4′ | ablation: v9 with the old theme rules, identical test users | within noise of v9 on every task (cold start −49%); the theme rules are neutral, the cold-start drop comes with ds4 |
 
 Each candidate (v4–v6) was fixed before its test results were seen, so the test set was not used
 for tuning. v2–v7 were all evaluated with the final serving code (eligibility filter, cold-start
@@ -97,3 +99,8 @@ liked inputs, the top 10 recommendations (✅ = liked later), and what they actu
   Lifts are reported against it rather than in isolation.
 * Canonicalisation merges formats and seasons but not every edition or subtitle variant (e.g.
   "Witcher 3: Wild Hunt" vs. "The Witcher 3 GOTY"). See `docs/data.md`.
+* Changing the catalog (ds3 → ds4) reshuffles which users are sampled for the test tasks, so
+  aggregate numbers across datasets are different exams. Compare on shared users
+  (`reports/<v>/benchmark_cases.csv.gz`) or on a controlled ablation instead.
+* The cold-start task derives each user's stated preferences from the first three themes of their
+  liked items, so changing the theme rules also changes the test questions.
