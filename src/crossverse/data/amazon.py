@@ -66,10 +66,13 @@ def download(raw_dir: Path, core: str = "0core", force: bool = False) -> list[Pa
 
 def _download_resumable(url: str, tmp: Path, attempts: int = 10) -> None:
     """Stream url into tmp, resuming from tmp's size after a dropped connection (the UCSD mirror stalls
-    on long transfers). Falls back to a full restart if the server ignores the Range header."""
-    for attempt in range(1, attempts + 1):
+    every few minutes on long transfers). Gives up after `attempts` failures in a row *without progress*;
+    falls back to a full restart if the server ignores the Range header."""
+    failures = 0
+    while failures < attempts:
         done = tmp.stat().st_size if tmp.exists() else 0
         headers = {"Range": f"bytes={done}-"} if done else {}
+        expected = 0
         try:
             with requests.get(url, stream=True, timeout=60, headers=headers) as r:
                 if r.status_code == 416:  # range starts at the end: already complete
@@ -82,11 +85,12 @@ def _download_resumable(url: str, tmp: Path, attempts: int = 10) -> None:
                         fh.write(chunk)
             if not expected or tmp.stat().st_size == expected:
                 return
-            log.warning("%s: got %d of %d bytes, resuming", tmp.name, tmp.stat().st_size, expected)
         except requests.RequestException as e:
-            log.warning("%s: attempt %d/%d failed (%s), resuming", tmp.name, attempt, attempts, e)
-        time.sleep(min(2**attempt, 30))
-    raise RuntimeError(f"download of {url} did not complete after {attempts} attempts")
+            log.warning("%s: %s; resuming at %d MB", tmp.name, e, tmp.stat().st_size >> 20 if tmp.exists() else 0)
+        progressed = tmp.exists() and tmp.stat().st_size > done
+        failures = 0 if progressed else failures + 1
+        time.sleep(min(2 ** failures, 30))
+    raise RuntimeError(f"download of {url} made no progress in {attempts} attempts")
 
 
 # --------------------------------------------------------------------------------------------
