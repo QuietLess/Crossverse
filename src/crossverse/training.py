@@ -50,11 +50,11 @@ def fit_retrievers(data: TrainData, settings: Settings) -> tuple[dict[str, Retri
                   alpha=m.als_alpha, seed=m.seed)
     retrievers: dict[str, Retriever] = {
         "popularity": timed("popularity", PopularityRetriever()),
-        "item_knn": timed("item_knn", ItemKNNRetriever(m.knn_neighbors, m.knn_shrink)),
+        "item_knn": timed("item_knn", ItemKNNRetriever(m.knn_neighbors, m.knn_shrink, min_support=m.knn_min_support)),
         "als": timed("als", ALSRetriever(**als_kw)),  # type: ignore[arg-type]
         "als_movie": timed("als_movie", ALSRetriever(domain="movie", **als_kw)),  # type: ignore[arg-type]
         "als_game": timed("als_game", ALSRetriever(domain="game", **als_kw)),  # type: ignore[arg-type]
-        "copref": timed("copref", CoPreferenceRetriever(m.copref_alpha)),
+        "copref": timed("copref", CoPreferenceRetriever(m.copref_alpha, min_support=m.copref_min_support)),
         "content": content,
         "two_tower": timed(
             "two_tower",

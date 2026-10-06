@@ -75,6 +75,9 @@ class ModelConfig:
     knn_shrink: float = 10.0
     content_dim: int = 128
     copref_alpha: float = 0.5  # target-popularity normalisation exponent (see knn_shrink note)
+    # Minimum users behind a pair before it counts (v10). Fixed before seeing test results.
+    knn_min_support: int = 2
+    copref_min_support: int = 3
     tt_dim: int = 64
     tt_epochs: int = 15
     tt_lr: float = 0.05
