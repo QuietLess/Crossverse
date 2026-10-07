@@ -21,10 +21,11 @@ class Progress:
     def update(self, n: int = 1) -> None:
         self.done += n
         frac = min(self.done / self.total, 1.0)
-        step = int(frac * 20)  # 5% steps in log files
-        if not self.tty and step == self.last_step and self.done < self.total:
+        step = int(frac * 20)  # log files: a line every 5%, or every 30 s so a slow job never looks stuck
+        quiet = time.time() - getattr(self, "last_print", 0.0) < 30
+        if not self.tty and step == self.last_step and self.done < self.total and quiet:
             return
-        self.last_step = step
+        self.last_step, self.last_print = step, time.time()
         elapsed = time.time() - self.t0
         left = elapsed / frac * (1 - frac) if frac else 0
         filled = int(self.width * frac)
