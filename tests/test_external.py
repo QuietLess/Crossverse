@@ -89,3 +89,15 @@ def test_response_cache_survives_a_truncated_line(tmp_path):
 
 def test_igdb_dates_before_1970():
     assert X._year(-315619200) == 1960 and X._year(1364860800) == 2013
+
+
+def test_game_title_year_is_a_hint_within_three_years():
+    mad_max = {"id": 1, "name": "Mad Max", "first_release_date": 1441065600, "total_rating_count": 300}  # 2015
+    smash = {"id": 2, "name": "Super Smash Bros.", "first_release_date": 916963200, "total_rating_count": 900}  # 1999
+    assert X.pick_game("Mad Max (2013)", 2013, [mad_max])[0]["id"] == 1
+    assert X.pick_game("Super Smash Bros. (2011)", 2011, [smash]) is None
+
+
+def test_publisher_prefix():
+    assert X.PUBLISHER_PREFIX.sub("", "WB Games Mad Max") == "Mad Max"
+    assert X.PUBLISHER_PREFIX.sub("", "Mad Max") == "Mad Max"

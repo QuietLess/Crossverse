@@ -50,6 +50,10 @@ def test_embeddings_are_cached_and_the_model_is_not_pickled(tmp_path):
     a = SemanticRetriever(cache_dir=tmp_path, embedder=counting).fit_catalog(catalog)
     b = SemanticRetriever(cache_dir=tmp_path, embedder=counting).fit_catalog(catalog)
     assert calls == [4] and np.array_equal(a.embeddings_, b.embeddings_)
+    changed = _catalog()
+    changed.items.loc[3, "text"] = "Spaceship a spaceship crew"  # one description changes
+    SemanticRetriever(cache_dir=tmp_path, embedder=counting).fit_catalog(changed)
+    assert calls == [4, 1]  # only that item is re-encoded
     restored = pickle.loads(pickle.dumps(a))
     assert restored._embedder is None and np.array_equal(restored.embeddings_, a.embeddings_)
 

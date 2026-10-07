@@ -196,6 +196,13 @@ class Match:
 
 STUDIO_PREFIX = re.compile(r"^(?:marvel|disney|pixar|dreamworks|walt\s+disney)'?s\s+", re.I)
 BRACKETS = re.compile(r"\s*[(\[][^)\]]*[)\]]?")
+# Publishers Amazon sellers prepend to game titles. Only used for a retry after a failed match, since
+# some are part of real names ("Sega Rally", "EA Sports UFC").
+PUBLISHER_PREFIX = re.compile(
+    r"^(?:wb\s+games|warner\s+bros\.?(?:\s+(?:games|interactive))?|activision|ubisoft|electronic\s+arts|ea"
+    r"|bethesda|square\s+enix|bandai\s+namco|capcom|konami|thq|2k(?:\s+games)?|sega|nintendo|sony|microsoft)\s+",
+    re.I,
+)
 YEAR_BONUS = 0.15  # candidate released within a year of the catalog's year: strong evidence
 FORMAT_BONUS = 0.2  # TMDB kind (movie / tv) agrees with what the Amazon products look like
 
@@ -274,10 +281,14 @@ def pick_game(title: str, catalog_year: int | None, candidates: list[dict[str, A
         sim = similarity(query, c.get("name", ""), "game")
         if sim < MIN_SIMILARITY:
             continue
+        # A "(YYYY)" in a game title is only a hint: display_titles() adds the (DVD-ish) catalog year
+        # to tell same-named games apart, so it can be wrong ("Mad Max (2013)" came out in 2015).
+        # Those labels are off by a year or two, so allow up to 3; beyond that it is another game
+        # ("Super Smash Bros. (2011)" is not the 1999 N64 one).
         cy = _year(c.get("first_release_date"))
-        if title_year and cy and abs(cy - title_year) > 1:
+        if title_year and cy and abs(cy - title_year) > 3:
             continue
-        key = _key(sim, c.get("total_rating_count"), cy, catalog_year)
+        key = _key(sim, c.get("total_rating_count"), cy, title_year or catalog_year)
         if key > best_key:
             best, best_key = (c, sim), key
     return best
@@ -311,6 +322,9 @@ def game_match(igdb: IGDB, item: dict[str, Any]) -> Match | None:
     picked = pick_game(item["title"], catalog_year, igdb.search(query))
     if picked is None:  # IGDB's relevance ranking can bury the main game under DLC: try the exact name
         picked = pick_game(item["title"], catalog_year, igdb.by_name(query))
+    bare = PUBLISHER_PREFIX.sub("", query)
+    if picked is None and bare != query:  # "WB Games Mad Max": retry without the publisher
+        picked = pick_game(PUBLISHER_PREFIX.sub("", item["title"]), catalog_year, igdb.search(bare))
     if picked is None:
         return None
     c, sim = picked

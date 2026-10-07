@@ -4,8 +4,8 @@ TF-IDF (retrieval/content.py) compares words, so "outlaw on the frontier" and "c
 look unrelated. A small sentence-embedding model maps text with similar meaning to nearby vectors.
 The model runs on CPU through fastembed (ONNX runtime, no PyTorch): `pip install -e ".[semantic]"`.
 
-Embeddings are cached under <cache_dir>/semantic/ keyed by model and catalog text, so retraining
-on the same catalog does not re-encode ~40k descriptions. The model itself is never pickled with
+Embeddings are cached per item text under <cache_dir>/semantic/, so retraining re-encodes only
+items whose text changed (the first run encodes ~40k descriptions). The model itself is never pickled with
 the engine; it is loaded lazily when a cold-start query needs encoding.
 """
 
@@ -19,6 +19,7 @@ from typing import Any
 
 import numpy as np
 
+from crossverse.progress import Progress
 from crossverse.retrieval.base import Catalog, History, Retriever, TrainData, normalize_rows
 
 log = logging.getLogger(__name__)
@@ -63,31 +64,51 @@ class SemanticRetriever(Retriever):
             from fastembed import TextEmbedding
 
             model = TextEmbedding(self.model)
-            self._embedder = lambda xs: np.asarray(list(model.embed(list(xs), batch_size=self.batch_size)))
+
+            def encode(xs: Sequence[str]) -> np.ndarray:
+                bar = Progress(len(xs), "texts", "semantic ") if len(xs) > 100 else None  # skip for queries
+                out = []
+                for v in model.embed(list(xs), batch_size=self.batch_size):
+                    out.append(v)
+                    if bar:
+                        bar.update()
+                return np.asarray(out)
+
+            self._embedder = encode
         return normalize_rows(np.asarray(self._embedder(texts), dtype=np.float32))
 
-    def _cache_path(self, texts: Sequence[str]) -> Path | None:
+    def _cache_file(self) -> Path | None:
         if self.cache_dir is None:
             return None
-        h = hashlib.sha1(self.model.encode())
-        for t in texts:
-            h.update(t.encode("utf-8", "replace") + b"\0")
-        return Path(self.cache_dir) / "semantic" / f"{h.hexdigest()[:16]}.npy"
+        model = hashlib.sha1(self.model.encode()).hexdigest()[:12]
+        return Path(self.cache_dir) / "semantic" / f"{model}-items.npz"
+
+    @staticmethod
+    def _text_key(text: str) -> str:
+        return hashlib.sha1(text.encode("utf-8", "replace")).hexdigest()
 
     def fit_catalog(self, catalog: Catalog) -> SemanticRetriever:
+        """Embed every item, reusing cached vectors per item text: a rebuild that changes some
+        descriptions re-encodes only those (the first run encodes everything, ~40 min on CPU)."""
         items = catalog.items
         texts = [item_text(str(t), list(th), str(x or ""))
                  for t, th, x in zip(items["title"], items["themes"], items["text"], strict=True)]
-        path = self._cache_path(texts)
+        keys = [self._text_key(t) for t in texts]
+        path = self._cache_file()
+        cached: dict[str, np.ndarray] = {}
         if path is not None and path.exists():
-            self.embeddings_ = np.load(path)
-            log.info("semantic: %d cached embeddings from %s", len(texts), path.name)
-            return self
-        log.info("semantic: encoding %d items with %s (first run only; cached afterwards)", len(texts), self.model)
-        self.embeddings_ = self._embed(texts)
-        if path is not None:
-            path.parent.mkdir(parents=True, exist_ok=True)
-            np.save(path, self.embeddings_)
+            with np.load(path) as z:
+                cached = dict(zip(z["keys"].tolist(), z["vectors"], strict=True))
+        todo = [n for n, k in enumerate(keys) if k not in cached]
+        log.info("semantic: %d items, %d cached, encoding %d with %s",
+                 len(texts), len(texts) - len(todo), len(todo), self.model)
+        if todo:
+            vecs = self._embed([texts[n] for n in todo])
+            cached.update({keys[n]: v for n, v in zip(todo, vecs, strict=True)})
+            if path is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                np.savez(path, keys=np.array(list(cached)), vectors=np.stack(list(cached.values())))
+        self.embeddings_ = np.stack([cached[k] for k in keys]).astype(np.float32)
         return self
 
     def fit(self, data: TrainData) -> SemanticRetriever:
