@@ -68,3 +68,10 @@ def test_raters_are_kept_apart_and_combined_prefers_the_human(tmp_path):
     c = J.combined(every)
     assert dict(zip(c.item_id, c.rating, strict=True)) == {"m_1": 2, "m_2": 2}
     assert J.agreement(every) == {"n": 1, "exact": 0.0, "within_one": 0.0, "opposite": 1.0}
+
+
+def test_ratings_follow_item_merges(tmp_path):
+    J.add_ratings([("q1", {**ITEM, "item_id": "g_old"}, 0, "edition"), ("q1", {**ITEM, "item_id": "g_keep"}, 2, "main"),
+                   ("q2", {**ITEM, "item_id": "g_old"}, 1, "only the edition")], tmp_path, rater="claude")
+    r = J.remap_ratings(J.load_ratings(tmp_path), {"g_old": "g_keep"})
+    assert sorted(zip(r.query_id, r.item_id, r.rating, strict=True)) == [("q1", "g_keep", 2), ("q2", "g_keep", 1)]

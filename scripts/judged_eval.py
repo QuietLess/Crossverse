@@ -23,7 +23,7 @@ from crossverse.serving.engine import CrossVerseEngine
 
 
 def top_k(engine: CrossVerseEngine, q: J.Query, taste: float, k: int) -> list[str]:
-    seed = engine.resolve(q.seed_item_id) or engine.resolve(f"{q.seed_domain}: {q.seed_title}")
+    seed = engine.resolve(q.seed_item_id) or engine.resolve(f"{q.seed_domain}: {q.seed_title}")  # merged seeds
     if seed is None:
         return []
     res = engine.recommend([(seed, 5.0)], target_domain=q.target_domain, k=k, explain=False, taste=taste)
@@ -38,8 +38,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rater", default="combined", help="you | claude | combined (yours where given, else Claude's)")
     args = p.parse_args(argv)
 
-    queries, every = J.load_queries(), J.load_ratings()
-    ratings = J.combined(every) if args.rater == "combined" else J.load_ratings(rater=args.rater, known_only=True)
+    queries = J.load_queries()
+    every = J.remap_ratings(J.load_ratings(), J.load_remap(get_settings().data.processed_dir))
+    ratings = J.combined(every) if args.rater == "combined" else every[(every.rater == args.rater) & (every.rating >= 0)]
     if ratings.empty:
         print("no ratings yet: rate suggestions in the UI's ⭐ Rate tab first", file=sys.stderr)
         return 1

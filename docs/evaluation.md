@@ -81,6 +81,7 @@ statistical tie with popularity (−1%, n.s.).
 | v9a | ds4′ | ablation: v9 with the old theme rules, identical test users | within noise of v9 on every task (cold start −49%); the theme rules are neutral, the cold-start drop comes with ds4 |
 | v10 | ds4 | v9 + minimum support for co-like pairs (kNN ≥ 2 users, co-preference ≥ 3 bridge users) | identical test users as v9: no task differs significantly (all within ±0.0022). The retrievers themselves improve a lot: co-preference alone 10–20× on movies→games / games→movies (0.0018 → 0.0183, 0.0008 → 0.0159), kNN 2–4× cross-domain and +6–7% within-domain; the ranker had already learned to discount the noisy pairs. Candidate |
 | v11 | ds4 | v10 + semantic retriever (sentence embeddings, bge-small) | identical test users as v10: no task differs significantly (−0.0024 … +0.0016). On the judged set it is the first version where high taste helps: 50% good / 27.5% bad in the top 5 at taste 0.8 (v10 at 0.5: 35% / 36%). Candidate |
+| v12 | ds5 | v11 recipe on ds5: TMDB/IGDB overviews, genres, keywords and release years for 67% of movie and 72% of game items (~80% of interactions); 369 editions merged by external id | different test users (catalog changed); on shared users no task differs significantly. Lift over popularity: within-movie +504% (v11 +367%), mixed +688% (+438%), cold start −34% (−47%), games→movies +25% (+37%). Judged set at taste 0.8: 59% good / 15% bad (v11: 50% / 27.5%). Candidate |
 
 Each candidate (v4–v6) was fixed before its test results were seen, so the test set was not used
 for tuning. v2–v7 were all evaluated with the final serving code (eligibility filter, cold-start
@@ -127,11 +128,17 @@ below use the owner's rating wherever given, otherwise Claude's (`scripts/judged
 | v10 | 1.0 | 26% | 48% |
 | v11 | 0 | 16% | 57.5% |
 | v11 | 0.5 | 41% | 36% |
-| **v11** | **0.8 (UI default)** | **50%** | **27.5%** |
+| v11 | 0.8 | 50% | 27.5% |
 | v11 | 1.0 | 49% | 31% |
+| v12 | 0 | 16% | 62.5% |
+| v12 | 0.5 | 44% | 21% |
+| **v12** | **0.8 (UI default)** | **59%** | **15%** |
+| v12 | 1.0 | 55% | 16% |
 
 With TF-IDF similarity (v10) high taste drifts into keyword matches ("River Monsters" for The
-Witcher 3); sentence embeddings (v11) keep improving up to 0.8–0.9. Caveats: 16 seeds, so ±1 item
+Witcher 3); sentence embeddings (v11) keep improving up to 0.8–0.9. External metadata (v12) mostly fixes seeds the
+sentence model misread from Amazon product copy (Mass Effect 2 → Battlestar Galactica instead of Iron Man 2).
+Caveats: 16 seeds, so ±1 item
 moves a cell by ~1 point; most ratings are the LLM's; and v11 trades variety for precision on
 franchises (Transformers → five Transformers games) and misreads some seeds (BioShock → Resident
 Evil, Pacific Rim instead of v10's V for Vendetta, Children of Men).

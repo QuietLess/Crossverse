@@ -135,3 +135,19 @@ def score_lists(lists: dict[str, list[str]], ratings: pd.DataFrame, k: int = 5) 
         })
     df = pd.DataFrame(rows)
     return {f"{c}@{k}": float(df[c].mean()) for c in ("ndcg", "good", "bad")} | {"judged_share": float(df.judged.mean())}
+
+
+def remap_ratings(ratings: pd.DataFrame, remap: dict[str, str]) -> pd.DataFrame:
+    """Follow item merges (data/processed/item_remap.json: absorbed id -> kept id) so ratings given to an
+    edition that was merged away still count. Where both ids were rated, the kept item's own rating wins."""
+    if not remap or ratings.empty:
+        return ratings
+    moved = ratings["item_id"].isin(remap)
+    out = ratings.assign(item_id=ratings["item_id"].replace(remap), _moved=moved.astype(int))
+    out = out.sort_values("_moved", kind="stable").drop_duplicates(["rater", "query_id", "item_id"], keep="first")
+    return out.drop(columns="_moved").reset_index(drop=True)
+
+
+def load_remap(processed_dir: Path) -> dict[str, str]:
+    path = processed_dir / "item_remap.json"
+    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
