@@ -11,9 +11,12 @@ from typing import Any
 import requests
 import streamlit as st
 
+from crossverse.evaluation import judgments as J
+
 API = os.environ.get("CROSSVERSE_API_URL", "http://localhost:8000")
 DOMAIN_ICON = {"movie": "🎬", "game": "🎮"}
 TASTE_DEFAULT = 0.5
+POOL_TASTES, POOL_K = (0.0, 0.5, 1.0), 5  # what the Rate tab asks you to judge, per query
 
 st.set_page_config(page_title="CrossVerse", page_icon="🎬", layout="wide")
 
@@ -153,7 +156,7 @@ taste = st.sidebar.slider(
 st.sidebar.caption("◀ popular with similar fans · similar story & setting ▶")
 
 tabs = st.tabs(["🎬 → 🎮 Movie to Game", "🎮 → 🎬 Game to Movie", "🔀 Mixed profile", "🔎 Similar items",
-                "✨ Cold start", "📊 Admin"])
+                "✨ Cold start", "📊 Admin", "⭐ Rate"])
 
 with tabs[0]:
     liked = picker("Movies / series you love", "movie", "m2g", ["Blade Runner 2049", "Ex Machina"])
@@ -229,3 +232,64 @@ with tabs[5]:
         st.caption(f"Mean popularity percentile of served items: {live['mean_popularity_percentile']} "
                    "(drift indicator: rising = more popularity-biased)")
         st.json({"health": health, "feedback": stats["feedback"]})
+
+
+@st.cache_data(show_spinner="Collecting suggestions to rate…")
+def rating_pool(model_version: str) -> dict[str, list[dict]]:
+    """Top POOL_K for every query at each POOL_TASTES setting, merged and in blind order."""
+    pool = {}
+    for q in J.load_queries():
+        path = "/recommend/movie-to-game" if q.seed_domain == "movie" else "/recommend/game-to-movie"
+        items: dict[str, dict] = {}
+        for t in POOL_TASTES:
+            body = call("POST", path, json={"liked": [{"item": q.seed_item_id}], "k": POOL_K, "taste": t,
+                                            "explain": False}) or {}
+            for it in body.get("items", []):
+                items.setdefault(it["item_id"], it)
+        pool[q.id] = [items[i] for i in J.blind_order(q.id, list(items))]
+    return pool
+
+
+@st.cache_data(show_spinner=False)
+def seed_item(title: str, domain: str) -> dict:
+    hits = call("GET", "/items/search", params={"q": title, "domain": domain, "limit": 1}) or []
+    return hits[0] if hits else {"title": title, "domain": domain}
+
+
+with tabs[6]:
+    st.markdown("Would someone who liked the title on the left enjoy the one on the right? Rate from what you "
+                "know or what it looks like; 🤷 when unsure. Suggestions from different settings are mixed and "
+                "shuffled, so you can't tell which setting proposed what. Each answer is saved to "
+                "`docs/judgments/ratings.csv` immediately: stop any time and continue later.")
+    health = call("GET", "/health") or {}
+    queries = {q.id: q for q in J.load_queries()}
+    pool = rating_pool(health.get("model_version", "?"))
+    ratings = J.load_ratings()
+    done = set(zip(ratings["query_id"], ratings["item_id"], strict=True))
+    todo = [(qid, it) for qid, items in pool.items() for it in items if (qid, it["item_id"]) not in done]
+    total = sum(len(v) for v in pool.values())
+    st.progress((total - len(todo)) / total if total else 1.0, text=f"{total - len(todo)} / {total} rated")
+    if not todo:
+        st.success("All suggestions for this model are rated. Thank you! Run `python scripts/judged_eval.py` "
+                   "to score the settings against your ratings.")
+    else:
+        qid, item = todo[0]
+        q = queries[qid]
+        left, right = st.columns(2)
+        with left:
+            st.caption("Someone who liked")
+            seed = seed_item(q.seed_title, q.seed_domain)
+            cover(seed, 160)
+            st.markdown(f"### {DOMAIN_ICON[q.seed_domain]} {q.seed_title}")
+            st.caption(" · ".join(seed.get("themes", [])[:5]))
+        with right:
+            st.caption(f"…would they enjoy this {item['domain']}?")
+            cover(item, 160)
+            year = f" ({item['year']})" if item.get("year") and str(item["year"]) not in item["title"] else ""
+            st.markdown(f"### {DOMAIN_ICON[item['domain']]} {item['title']}{year}")
+            st.caption(" · ".join(item["themes"][:5]))
+        b = st.columns(3)
+        for col, (score, label) in zip(b, ((2, "👍 Good fit"), (1, "🤷 Okay / unsure"), (0, "👎 Bad fit")), strict=True):
+            if col.button(label, key=f"rate_{score}_{qid}_{item['item_id']}", use_container_width=True):
+                J.add_rating(qid, item, score)
+                st.rerun()
