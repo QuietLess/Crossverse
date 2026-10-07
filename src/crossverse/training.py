@@ -19,6 +19,7 @@ from crossverse.ranking.ranker import (
     build_ranking_dataset,
     build_ranking_dataset_parallel,
 )
+from crossverse.retrieval import semantic
 from crossverse.retrieval.base import Catalog, Retriever, TrainData
 from crossverse.retrieval.baselines import (
     ALSRetriever,
@@ -63,6 +64,12 @@ def fit_retrievers(data: TrainData, settings: Settings) -> tuple[dict[str, Retri
                               max_history=m.tt_max_history, seed=m.seed),
         ),
     }
+    if m.semantic_model:
+        if semantic.available():
+            cache = settings.serving.artifacts_dir / "cache"
+            retrievers["semantic"] = timed("semantic", semantic.SemanticRetriever(m.semantic_model, cache_dir=cache))
+        else:
+            log.warning("semantic retriever skipped: install the `semantic` extra (fastembed) to enable it")
     return retrievers, timings
 
 

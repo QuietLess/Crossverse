@@ -13,6 +13,8 @@ pydantic==2.13.5
 prometheus-client==0.26.0
 threadpoolctl==3.6.0
 streamlit==1.53.1
+fastembed==0.8.1
+onnxruntime==1.30.0
 psycopg==3.3.6
 psycopg-binary==3.3.6
 redis==8.1.0

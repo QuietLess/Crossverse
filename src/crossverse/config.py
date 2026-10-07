@@ -78,6 +78,9 @@ class ModelConfig:
     # Minimum users behind a pair before it counts (v10). Fixed before seeing test results.
     knn_min_support: int = 2
     copref_min_support: int = 3
+    # Sentence-embedding model for the "semantic" retriever (v11); "" disables it. Needs the optional
+    # `semantic` extra (fastembed); without it training skips the retriever with a warning.
+    semantic_model: str = "BAAI/bge-small-en-v1.5"
     tt_dim: int = 64
     tt_epochs: int = 15
     tt_lr: float = 0.05

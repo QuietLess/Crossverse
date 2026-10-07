@@ -19,7 +19,8 @@ def small_settings(tmp_path_factory) -> Settings:
         data=DataConfig(processed_dir=root / "processed"),
         split=SplitConfig(cross_holdout_frac=0.08),
         model=ModelConfig(als_factors=16, als_iterations=3, content_dim=32, tt_dim=16, tt_epochs=3,
-                          ranker_queries_per_task=150, candidates_per_source=50),
+                          ranker_queries_per_task=150, candidates_per_source=50,
+                          semantic_model=""),  # no model download in tests; see test_semantic.py
         serving=ServingConfig(artifacts_dir=root / "artifacts", cache_ttl_seconds=60),
     )
 

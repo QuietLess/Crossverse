@@ -194,7 +194,8 @@ class CrossVerseEngine:
         if taste > 0 and quality is not None and len(cands.idx):
             # Below the quality floor an item keeps only its behavioural share: similarity alone
             # must not lift a title almost nobody liked.
-            sim = np.where(quality[cands.idx], _percentile(cands.scores["content"]), 0.0)
+            similar = cands.scores[self.generator.similarity_source()]
+            sim = np.where(quality[cands.idx], _percentile(similar), 0.0)
             scores = (1 - taste) * _percentile(scores) + taste * sim
         if len(history) == 0 and (preferences or free_text) and len(cands.idx):
             # Explicit-intent rule: a cold-start user who asked for "cyberpunk" sees cyberpunk
