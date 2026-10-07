@@ -52,10 +52,20 @@ def main(argv: list[str] | None = None) -> int:
     igdb = X.IGDB(env["IGDB_CLIENT_ID"], env["IGDB_CLIENT_SECRET"], OUT_DIR)
     tmdb = X.TMDB(env["TMDB_TOKEN"], OUT_DIR)
 
+    def safe(match):
+        """One odd record (a malformed date, a 4xx) must not stop an hour-long run: log and skip."""
+        def call(record: dict):
+            try:
+                return match(record)
+            except Exception as e:  # noqa: BLE001
+                logging.warning("skipped %s (%s): %s", record["item_id"], record["title"][:40], e)
+                return None
+        return call
+
     def run(label: str, records: list[dict], match, threads: int) -> None:
         bar = Progress(len(records), "items", label)
         with ThreadPoolExecutor(threads) as pool:
-            for m in pool.map(match, records):
+            for m in pool.map(safe(match), records):
                 if m:
                     rows.append(X.as_row(m))
                 bar.update()

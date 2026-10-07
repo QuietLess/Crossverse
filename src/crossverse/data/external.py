@@ -23,6 +23,7 @@ import re
 import threading
 import time
 from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
 from difflib import SequenceMatcher
 from pathlib import Path
 from typing import Any
@@ -233,8 +234,8 @@ def search_title(title: str, domain: str = "movie") -> tuple[str, int | None]:
 
 
 def _year(date: str | int | None) -> int | None:
-    if isinstance(date, int):  # IGDB: unix seconds
-        return time.gmtime(date).tm_year
+    if isinstance(date, int):  # IGDB: unix seconds, negative before 1970 (time.gmtime rejects those on Windows)
+        return (datetime(1970, 1, 1, tzinfo=UTC) + timedelta(seconds=date)).year
     return int(date[:4]) if date and len(date) >= 4 and date[:4].isdigit() else None
 
 

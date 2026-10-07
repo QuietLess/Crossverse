@@ -85,3 +85,7 @@ def test_response_cache_survives_a_truncated_line(tmp_path):
     with open(tmp_path / "c.jsonl", "a", encoding="utf-8") as fh:
         fh.write('{"k": "b", "v": [')  # run interrupted mid-write
     assert X.ResponseCache(tmp_path / "c.jsonl").get("a") == [1]
+
+
+def test_igdb_dates_before_1970():
+    assert X._year(-315619200) == 1960 and X._year(1364860800) == 2013
