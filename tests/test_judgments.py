@@ -50,3 +50,21 @@ def test_custom_queries_file(tmp_path):
     q = {"id": "x", "seed_item_id": "g_1", "seed_title": "Doom", "seed_domain": "game", "target_domain": "movie"}
     (tmp_path / "queries.json").write_text(json.dumps({"queries": [q]}), encoding="utf-8")
     assert J.load_queries(tmp_path)[0].seed_title == "Doom"
+
+
+def test_dont_know_is_stored_but_never_scored(tmp_path):
+    J.add_rating("q1", ITEM, -1, tmp_path)
+    assert len(J.load_ratings(tmp_path)) == 1
+    assert J.load_ratings(tmp_path, known_only=True).empty
+
+
+def test_raters_are_kept_apart_and_combined_prefers_the_human(tmp_path):
+    J.add_ratings([("q1", ITEM, 0, "no western"), ("q1", {**ITEM, "item_id": "m_2"}, 2, "same franchise")],
+                  tmp_path, rater="claude")
+    J.add_rating("q1", ITEM, 2, tmp_path)  # the human disagrees on m_1
+    J.add_rating("q1", {**ITEM, "item_id": "m_3"}, -1, tmp_path)  # and doesn't know m_3
+    every = J.load_ratings(tmp_path)
+    assert len(every) == 4 and set(every.rater) == {"you", "claude"}
+    c = J.combined(every)
+    assert dict(zip(c.item_id, c.rating, strict=True)) == {"m_1": 2, "m_2": 2}
+    assert J.agreement(every) == {"n": 1, "exact": 0.0, "within_one": 0.0, "opposite": 1.0}

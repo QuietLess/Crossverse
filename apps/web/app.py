@@ -256,40 +256,52 @@ def seed_item(title: str, domain: str) -> dict:
     return hits[0] if hits else {"title": title, "domain": domain}
 
 
-with tabs[6]:
-    st.markdown("Would someone who liked the title on the left enjoy the one on the right? Rate from what you "
-                "know or what it looks like; 🤷 when unsure. Suggestions from different settings are mixed and "
-                "shuffled, so you can't tell which setting proposed what. Each answer is saved to "
-                "`docs/judgments/ratings.csv` immediately: stop any time and continue later.")
+@st.fragment
+def rate_panel() -> None:
+    """Runs as a fragment: a rating click refreshes only this panel, not all tabs (each full rerun calls
+    the API for every tab, which made saving a rating take seconds)."""
     health = call("GET", "/health") or {}
     queries = {q.id: q for q in J.load_queries()}
     pool = rating_pool(health.get("model_version", "?"))
-    ratings = J.load_ratings()
-    done = set(zip(ratings["query_id"], ratings["item_id"], strict=True))
+    mine = J.load_ratings(rater=J.HUMAN)
+    done = set(zip(mine["query_id"], mine["item_id"], strict=True))
     todo = [(qid, it) for qid, items in pool.items() for it in items if (qid, it["item_id"]) not in done]
     total = sum(len(v) for v in pool.values())
-    st.progress((total - len(todo)) / total if total else 1.0, text=f"{total - len(todo)} / {total} rated")
+    skipped = int((mine["rating"] < 0).sum())
+    st.progress((total - len(todo)) / total if total else 1.0,
+                text=f"{total - len(todo)} / {total} answered ({skipped} skipped as unknown)")
+    agree = J.agreement(J.load_ratings())
+    if agree.get("n"):
+        st.caption(f"Agreement with Claude's ratings on {agree['n']} items you both rated: "
+                   f"{agree['exact']:.0%} identical, {agree['within_one']:.0%} within one step.")
     if not todo:
-        st.success("All suggestions for this model are rated. Thank you! Run `python scripts/judged_eval.py` "
-                   "to score the settings against your ratings.")
-    else:
-        qid, item = todo[0]
-        q = queries[qid]
-        left, right = st.columns(2)
-        with left:
-            st.caption("Someone who liked")
-            seed = seed_item(q.seed_title, q.seed_domain)
-            cover(seed, 160)
-            st.markdown(f"### {DOMAIN_ICON[q.seed_domain]} {q.seed_title}")
-            st.caption(" · ".join(seed.get("themes", [])[:5]))
-        with right:
-            st.caption(f"…would they enjoy this {item['domain']}?")
-            cover(item, 160)
-            year = f" ({item['year']})" if item.get("year") and str(item["year"]) not in item["title"] else ""
-            st.markdown(f"### {DOMAIN_ICON[item['domain']]} {item['title']}{year}")
-            st.caption(" · ".join(item["themes"][:5]))
-        b = st.columns(3)
-        for col, (score, label) in zip(b, ((2, "👍 Good fit"), (1, "🤷 Okay / unsure"), (0, "👎 Bad fit")), strict=True):
-            if col.button(label, key=f"rate_{score}_{qid}_{item['item_id']}", use_container_width=True):
-                J.add_rating(qid, item, score)
-                st.rerun()
+        st.success("Nothing left to rate for this model. Thank you! Run `python scripts/judged_eval.py`.")
+        return
+    qid, item = todo[0]
+    q = queries[qid]
+    left, right = st.columns(2)
+    with left:
+        st.caption("Someone who liked")
+        seed = seed_item(q.seed_title, q.seed_domain)
+        cover(seed, 160)
+        st.markdown(f"### {DOMAIN_ICON[q.seed_domain]} {q.seed_title}")
+        st.caption(" · ".join(seed.get("themes", [])[:5]))
+    with right:
+        st.caption(f"…would they enjoy this {item['domain']}?")
+        cover(item, 160)
+        year = f" ({item['year']})" if item.get("year") and str(item["year"]) not in item["title"] else ""
+        st.markdown(f"### {DOMAIN_ICON[item['domain']]} {item['title']}{year}")
+        st.caption(" · ".join(item["themes"][:5]))
+    choices = ((2, "👍 Good fit"), (1, "🤷 Okay"), (0, "👎 Bad fit"), (-1, "🙈 Don't know it"))
+    for col, (score, label) in zip(st.columns(4), choices, strict=True):
+        if col.button(label, key=f"rate_{score}_{qid}_{item['item_id']}", use_container_width=True):
+            J.add_rating(qid, item, score)
+            st.rerun(scope="fragment")
+
+
+with tabs[6]:
+    st.markdown("Would someone who liked the title on the left enjoy the one on the right? Only rate what you "
+                "know: **🙈 Don't know it** skips a title for good. Suggestions from different settings are mixed "
+                "and shuffled, so you can't tell which setting proposed what. Answers are saved to "
+                "`docs/judgments/ratings.csv` immediately: stop any time.")
+    rate_panel()

@@ -2,9 +2,13 @@
 
 The offline benchmark asks "will this Amazon user buy it?", which rewards bestsellers. This set asks
 a person instead. Queries live in docs/judgments/queries.json; ratings in ratings.csv
-(2 = good fit, 1 = okay, 0 = bad). Candidates are pooled from several systems and shown blind, so a
-rating says nothing about which system proposed the item. A new system only needs ratings for the
-items it adds to the pool.
+(2 = good fit, 1 = okay, 0 = bad, -1 = rater doesn't know the title: skipped, never scored).
+Candidates are pooled from several systems and shown blind, so a rating says nothing about which
+system proposed the item. A new system only needs ratings for the items it adds to the pool.
+
+Every rating records its `rater`: "you" (the Rate tab) or "claude" (LLM-as-judge, with a written
+reason). `agreement()` compares the two on items both rated, which is what makes the LLM's ratings
+usable for titles the human doesn't know.
 """
 
 from __future__ import annotations
@@ -23,8 +27,9 @@ import pandas as pd
 from crossverse.config import PROJECT_ROOT
 
 JUDGMENTS_DIR = PROJECT_ROOT / "docs" / "judgments"
-RATING_COLUMNS = ["query_id", "item_id", "title", "domain", "rating", "rated_at"]
-LABELS = {2: "good fit", 1: "okay", 0: "bad"}
+RATING_COLUMNS = ["query_id", "item_id", "title", "domain", "rating", "rater", "reason", "rated_at"]
+LABELS = {2: "good fit", 1: "okay", 0: "bad", -1: "don't know"}
+HUMAN = "you"
 
 
 @dataclass(frozen=True)
@@ -41,27 +46,63 @@ def load_queries(directory: Path = JUDGMENTS_DIR) -> list[Query]:
     return [Query(**q) for q in data["queries"]]
 
 
-def load_ratings(directory: Path = JUDGMENTS_DIR) -> pd.DataFrame:
-    """Latest rating per (query, item): re-rating an item replaces the earlier answer."""
+def load_ratings(directory: Path = JUDGMENTS_DIR, rater: str | None = None, known_only: bool = False) -> pd.DataFrame:
+    """Latest rating per (rater, query, item): re-rating an item replaces the earlier answer.
+    `known_only` drops "don't know" answers (use it for scoring)."""
     path = directory / "ratings.csv"
     if not path.exists():
         return pd.DataFrame(columns=RATING_COLUMNS)
-    df = pd.read_csv(path, dtype={"rating": int})
-    return df.drop_duplicates(["query_id", "item_id"], keep="last").reset_index(drop=True)
+    df = pd.read_csv(path, dtype={"rating": int}, keep_default_na=False)
+    df = df.drop_duplicates(["rater", "query_id", "item_id"], keep="last").reset_index(drop=True)
+    if rater is not None:
+        df = df[df["rater"] == rater]
+    if known_only:
+        df = df[df["rating"] >= 0]
+    return df.reset_index(drop=True)
 
 
-def add_rating(query_id: str, item: dict[str, Any], rating: int, directory: Path = JUDGMENTS_DIR) -> None:
+def add_rating(query_id: str, item: dict[str, Any], rating: int, directory: Path = JUDGMENTS_DIR,
+               rater: str = HUMAN, reason: str = "") -> None:
     """Append one rating (append-only, so a crash or a second window never loses earlier answers)."""
-    if rating not in LABELS:
-        raise ValueError(f"rating must be one of {sorted(LABELS)}")
+    add_ratings([(query_id, item, rating, reason)], directory, rater)
+
+
+def add_ratings(rows: list[tuple[str, dict[str, Any], int, str]], directory: Path = JUDGMENTS_DIR,
+                rater: str = HUMAN) -> None:
+    """Append several (query_id, item, rating, reason) rows in one write."""
+    for _, _, rating, _ in rows:
+        if rating not in LABELS:
+            raise ValueError(f"rating must be one of {sorted(LABELS)}")
     path = directory / "ratings.csv"
     new = not path.exists()
+    now = datetime.now(UTC).isoformat(timespec="seconds")
     with open(path, "a", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         if new:
             w.writerow(RATING_COLUMNS)
-        w.writerow([query_id, item["item_id"], item["title"], item["domain"], rating,
-                    datetime.now(UTC).isoformat(timespec="seconds")])
+        for query_id, item, rating, reason in rows:
+            w.writerow([query_id, item["item_id"], item["title"], item["domain"], rating, rater, reason, now])
+
+
+def agreement(ratings: pd.DataFrame, a: str = HUMAN, b: str = "claude") -> dict[str, float]:
+    """How often two raters agree on items both rated (and both knew)."""
+    known = ratings[ratings["rating"] >= 0]
+    x = known[known.rater == a].set_index(["query_id", "item_id"])["rating"]
+    y = known[known.rater == b].set_index(["query_id", "item_id"])["rating"]
+    both = x.index.intersection(y.index)
+    if not len(both):
+        return {"n": 0}
+    d = (x[both] - y[both]).abs()
+    return {"n": int(len(both)), "exact": float((d == 0).mean()), "within_one": float((d <= 1).mean()),
+            "opposite": float((d == 2).mean())}
+
+
+def combined(ratings: pd.DataFrame, prefer: str = HUMAN) -> pd.DataFrame:
+    """One known rating per (query, item): `prefer`'s where given, otherwise any other rater's."""
+    known = ratings[ratings["rating"] >= 0].copy()
+    known["_rank"] = (known["rater"] != prefer).astype(int)
+    known = known.sort_values("_rank").drop_duplicates(["query_id", "item_id"], keep="first")
+    return known.drop(columns="_rank").reset_index(drop=True)
 
 
 def blind_order(query_id: str, item_ids: list[str]) -> list[str]:
