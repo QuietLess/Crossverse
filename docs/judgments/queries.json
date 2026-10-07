@@ -39,7 +39,7 @@
     {
       "id": "g2m-the-last-of-us",
       "seed_item_id": "g_700302b6e2",
-      "seed_title": "The Last of Us Remastered Hits",
+      "seed_title": "The Last of Us",
       "seed_domain": "game",
       "target_domain": "movie"
     },
@@ -109,7 +109,7 @@
     {
       "id": "m2g-interstellar",
       "seed_item_id": "m_8367a50e79",
-      "seed_title": "Interstellar (Collectible Gift Set)",
+      "seed_title": "Interstellar",
       "seed_domain": "movie",
       "target_domain": "game"
     }

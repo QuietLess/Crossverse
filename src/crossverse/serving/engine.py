@@ -57,7 +57,12 @@ _NOT_RECOMMENDABLE = re.compile(
     r"|v-?bucks|coins?\s*pack|points?\s*pack"
     # accessories Amazon files under "Games"
     r"|collectible\s*case|case\s+for|controller|headset|charg(?:er|ing)|amiibo|figurine|console\s*bundle"
-    r"|fight\s*stick|arcade\s*stick|starship\s*pack|weapon\s*pack)\b",
+    r"|fight\s*stick|arcade\s*stick|starship\s*pack|weapon\s*pack"
+    # currency with an amount ("Xbox LIVE 1600 Microsoft Points", "500 Halo Credits", "1,200 Robux")
+    r"|\d[\d,]*\s+(?:microsoft\s+)?points|\d[\d,]*\s+[\w ]{0,20}?credits|robux|gift\s*code"
+    # hardware: consoles by storage size ("60GB System", "Slim 120GB"), systems, accessories
+    r"|\d+\s*gb|video\s*game\s*system|audio\s*system|lens\s*cleaner|connector|memory\s*unit|kinect\s*sensor"
+    r"|(?:wii|ps\d|base|horizontal|vertical)\s+stand|compatible\s+with|screen\s*protector)\b",
     re.I,
 )
 

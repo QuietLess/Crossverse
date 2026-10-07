@@ -147,7 +147,8 @@ _DISPLAY_NOISE = {
     "movie": rf"(?:{_FORMAT}|bd|(?:4k[\s-]*)?ultra[\s-]*hd)(?:\s*(?:collection|set|edition|version))?|{_ANNIVERSARY}|{_EDITION}|{_SEASON}"
              r"|(?:the\s*)?complete\s*(?:series|collection)|seasons?\s*\d+\s*(?:-|to|&)\s*\d+",
     "game": rf"(?:(?:sony|microsoft|origin|uplay)\s*)?(?:{_PLATFORM})(?:\s*(?:edition|version))?|{_GAME_FORMAT}"
-            rf"|{_ANNIVERSARY}|{_EDITION}|game\s*only|physical(?:\s*edition)?",
+            rf"|{_ANNIVERSARY}|{_EDITION}|game\s*only|physical(?:\s*edition)?"
+            r"|(?:playstation\s*)?hits",  # budget re-release line: "The Last of Us Remastered Hits"
 }
 _DISPLAY_NOISE["film-volume"] = _DISPLAY_NOISE["movie"].replace(f"|{_SEASON}", "")  # keep "Kill Bill: Vol. 2"
 _DISPLAY_TAIL = {d: re.compile(rf"(?:^|{_SEP}+)(?:{p})\.?{_SEP}*$", re.I) for d, p in _DISPLAY_NOISE.items()}
@@ -162,7 +163,7 @@ _BRACKET_NOISE = re.compile(
     rf"\b(?:{_FORMAT}|{_PLATFORM}|{_EDITION}|{_SEASON}|region|uncut|packaging|exclusive|boxed|sapphire|remaster(?:ed)?"
     r"|subtitle[sd]?|superbit|decal|physical|game\s*only|restricted|distribution|slip\s*cover|sleeve|bonus|includes?"
     r"|bilingual|english|french|spanish|german|anniversary|deluxe|special|limited|bigface|seasons?"
-    r"|download|(?:digital|online|activation)\s*code|(?:cd[\s-]*)?key)\b",
+    r"|download|(?:digital|online|activation)\s*code|(?:cd[\s-]*)?key|collectible|gift\s*set)\b",
     re.I,
 )
 _BRACKET = re.compile(r"\s*[\(\[]\s*([^\(\)\[\]]*?)\s*[\)\]]")
