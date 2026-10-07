@@ -182,7 +182,12 @@ reports/                      per-version benchmarks, significance, error analys
 * Hou et al., *Bridging Language and Items for Retrieval and Recommendation* (Amazon Reviews 2023),
   https://amazon-reviews-2023.github.io/ ; UCSD datasets page https://cseweb.ucsd.edu/~jmcauley/datasets.html
 * MovieLens 32M (not used for training: user ids do not align) https://grouplens.org/datasets/movielens/32m/
-* IGDB API (optional metadata enrichment) https://api-docs.igdb.com/
+* TMDB API (movie and TV metadata: overviews, genres, keywords, release years) https://www.themoviedb.org/ .
+  **This product uses the TMDB API but is not endorsed or certified by TMDB.**
+* IGDB API (game metadata, via Twitch) https://www.igdb.com/ , https://api-docs.igdb.com/
 
-Datasets are downloaded by code and never committed. Re-check each source's license before
-redistributing derived data.
+Datasets are downloaded by code and never committed; TMDB/IGDB responses are cached locally under
+`data/external/` (git-ignored) and used for non-commercial research only. Keys go in a git-ignored
+`.env` (`TMDB_TOKEN`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`); `python pipelines/enrich.py` builds
+`data/external/metadata.parquet`, which the dataset build then uses. Re-check each source's license
+before redistributing derived data.
