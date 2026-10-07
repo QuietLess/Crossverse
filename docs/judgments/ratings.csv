@@ -1,0 +1,217 @@
+query_id,item_id,title,domain,rating,rater,reason,rated_at
+g2m-red-dead-redemption-2,m_a5021a041b,Game Of Thrones,movie,0,you,,2026-10-07T14:07:56+00:00
+g2m-red-dead-redemption-2,m_9d67a88b8b,Nevada Smith,movie,2,you,,2026-10-07T14:08:33+00:00
+g2m-red-dead-redemption-2,m_19a3570625,Longmire,movie,2,you,,2026-10-07T14:20:51+00:00
+g2m-red-dead-redemption-2,m_f8c3255f03,Hacksaw Ridge,movie,0,you,,2026-10-07T14:21:20+00:00
+g2m-red-dead-redemption-2,m_4f72524f9a,Vikings,movie,0,you,,2026-10-07T14:28:58+00:00
+g2m-red-dead-redemption-2,m_b3252bbe02,Rawhide,movie,2,you,,2026-10-07T14:29:17+00:00
+g2m-red-dead-redemption-2,m_df9bedb45d,John Wick,movie,0,you,,2026-10-07T14:29:42+00:00
+g2m-red-dead-redemption-2,m_ec8ff9dbda,Batman v Superman: Dawn of Justice,movie,0,you,,2026-10-07T14:30:02+00:00
+g2m-red-dead-redemption-2,m_77a0f76b3d,Larry McMurtry's Dead Man's Walk,movie,1,you,,2026-10-07T14:30:35+00:00
+g2m-red-dead-redemption-2,m_a5021a041b,Game Of Thrones,movie,1,claude,"gritty, morally grey drama, but fantasy rather than western",2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_9d67a88b8b,Nevada Smith,movie,2,claude,classic revenge western,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_19a3570625,Longmire,movie,2,claude,modern-day western crime drama,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_f8c3255f03,Hacksaw Ridge,movie,0,claude,WWII war film; no western or outlaw link,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_4f72524f9a,Vikings,movie,1,claude,"brutal historical adventure, not a western",2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_b3252bbe02,Rawhide,movie,2,claude,cowboy cattle-drive western,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_df9bedb45d,John Wick,movie,1,claude,"revenge action, but modern urban setting",2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_ec8ff9dbda,Batman v Superman: Dawn of Justice,movie,0,claude,superhero film,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_77a0f76b3d,Larry McMurtry's Dead Man's Walk,movie,2,claude,Lonesome Dove prequel western,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_6f5b5f20b3,The Walking Dead,movie,0,claude,zombie horror,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_0e8d118df3,The First World War,movie,0,claude,war documentary,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_3dfb4304c3,Justified,movie,2,claude,modern western: US marshal in Kentucky outlaw country,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_d54c98035d,Larry McMurtry's Streets of Laredo,movie,2,claude,Lonesome Dove sequel western,2026-10-07T14:35:14+00:00
+g2m-red-dead-redemption-2,m_2421ae98ca,Star Wars The Force Awakens,movie,0,claude,space fantasy,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_ad3f95e62d,The Last Witch Hunter,movie,2,claude,witch/monster-hunter dark fantasy,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_12043ea188,Suicide Squad,movie,0,claude,superhero film,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_df9bedb45d,John Wick,movie,0,claude,urban crime action,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_b75b9adc8b,Princess Mononoke,movie,2,claude,mature folklore fantasy with spirits and monsters,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_e3416a7c5c,Monster Hunter,movie,1,claude,"monster-hunting fantasy action, shallow",2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_947c801824,Deadpool,movie,0,claude,superhero comedy,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_aefdb66004,Gods Of Egypt,movie,1,claude,"mythological fantasy action, campy",2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_a5021a041b,Game Of Thrones,movie,2,claude,"dark, mature political fantasy",2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_15c2279851,Fantastic Beasts(BD),movie,1,claude,"fantasy creatures, lighter family tone",2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_7d46450282,Land That Time Forgot,movie,0,claude,pulp dinosaur adventure,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_8391a8a0e4,Warcraft,movie,2,claude,video-game high fantasy with orcs and magic,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_46ba2c24ed,River Monsters,movie,0,claude,nature documentary,2026-10-07T14:35:14+00:00
+g2m-witcher-3-wild-hunt,m_03d18d939f,The Mortal Instruments: City of Bones,movie,1,claude,YA urban fantasy with demon hunters,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_c30bc05443,NCIS,movie,0,claude,procedural crime TV,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_68a5e1fe3d,Firefly,movie,1,claude,"sci-fi, but a character-driven space western rather than military",2026-10-07T14:35:14+00:00
+g2m-halo-3,m_67ac2250cf,Saving Private Ryan,movie,1,claude,"military combat drama, no sci-fi",2026-10-07T14:35:14+00:00
+g2m-halo-3,m_3c5f918e79,Band of Brothers,movie,1,claude,"military combat drama, no sci-fi",2026-10-07T14:35:14+00:00
+g2m-halo-3,m_47565c1d5e,Red vs. Blue The Blood Gulch Chronicles: The First Five Seasons,movie,2,claude,comedy series made inside Halo; a Halo-fan staple,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_6d61d53a5b,The Civil War - A Film by Ken Burns,movie,0,claude,historical documentary,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_b04743dcd9,Serenity,movie,1,claude,"sci-fi action, but space western tone",2026-10-07T14:35:14+00:00
+g2m-halo-3,m_6cb5bed910,Trinity & Beyond - The Atomic Bomb Movie,movie,0,claude,documentary,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_3b90dc78c3,Dogfights,movie,0,claude,documentary,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_ea4d18de31,John Carter,movie,1,claude,sci-fi war on an alien world,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_97ae7dc8c5,Dexter,movie,0,claude,serial-killer crime drama,2026-10-07T14:35:14+00:00
+g2m-halo-3,m_ee13e997d7,24,movie,0,claude,counter-terror thriller,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_3ea7ee6f27,Masters of Horror,movie,0,claude,horror anthology,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_a5021a041b,Game Of Thrones,movie,1,claude,"choice-heavy political drama, but fantasy",2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_e105c9c585,Benny Hill: The Complete Megaset: The Thames Years 1969-1989,movie,0,claude,sketch comedy,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_68a5e1fe3d,Firefly,movie,2,claude,ragtag starship crew space opera,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_c91afd987a,MARVEL'S THE AVENGERS,movie,1,claude,team-up action blockbuster,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_7f0d932b95,Wreck-It Ralph,movie,0,claude,family animation,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_6bf2b5ed6a,Oblivion,movie,1,claude,sci-fi mystery (title is ambiguous across two films),2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_08ce24fe17,Star Trek,movie,2,claude,"space opera, crew and alien species",2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_bb525c6b41,Modern Family,movie,0,claude,sitcom,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_e51fdf546d,G.I. Joe,movie,0,claude,toy-franchise military action,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_c4fdcf9a8b,How I Met Your Mother,movie,0,claude,sitcom,2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_2006925c69,Avatar (2009),movie,1,claude,"alien-world sci-fi, less space opera",2026-10-07T14:35:14+00:00
+g2m-mass-effect-2,m_e2e5e239b9,Frozen II,movie,0,claude,family animation,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_fdd59f5426,George A. Romero's Land of the Dead,movie,2,claude,zombie survival horror,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_508ccca9c3,Resident Evil: Damnation,movie,2,claude,Resident Evil CG film with Leon,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_0de83f7b4d,Rick and Morty,movie,0,claude,animated comedy,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_bd4d2cbda6,31,movie,1,claude,"survival horror, slasher rather than zombies",2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_6f5b5f20b3,The Walking Dead,movie,2,claude,zombie survival drama,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_947c801824,Deadpool,movie,0,claude,superhero comedy,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_6a85d02bb1,Halloween,movie,1,claude,classic slasher horror,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_f04ac41e48,Lords of Salem,movie,1,claude,"occult horror, slow burn",2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_c8c8e58729,Resident Evil: Afterlife,movie,2,claude,Resident Evil film,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_65708cd322,Halloween II,movie,1,claude,classic slasher horror,2026-10-07T14:35:14+00:00
+g2m-resident-evil-2-2019,m_a5021a041b,Game Of Thrones,movie,0,claude,fantasy drama,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_848391fbe6,Act of Valor,movie,0,claude,military action film,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_43601617ab,Despicable Me 2,movie,0,claude,family animation,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_a64073996b,The Croods,movie,0,claude,family animation,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_3dfb4304c3,Justified,movie,0,claude,crime western drama,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_c91afd987a,MARVEL'S THE AVENGERS,movie,0,claude,superhero blockbuster,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_b501336a38,World War Z,movie,2,claude,infected-outbreak survival,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_2006925c69,Avatar (2009),movie,0,claude,alien-world blockbuster,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_6f5b5f20b3,The Walking Dead,movie,2,claude,post-apocalyptic survival drama,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_e4dfa9b51a,Cats & Dogs: The Revenge of Kitty Galore,movie,0,claude,family comedy,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_508ccca9c3,Resident Evil: Damnation,movie,1,claude,"bioweapon horror, action-heavy",2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_c3517fbfd3,Survivorman,movie,0,claude,survival reality show,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_fc2ff1b4f9,Guardians of the Galaxy,movie,0,claude,superhero comedy,2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_55b7a98593,Dredd,movie,1,claude,"violent dystopia, but not a survival drama",2026-10-07T14:35:14+00:00
+g2m-the-last-of-us,m_bb31f20260,Hitman,movie,0,claude,assassin action,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_878239b4ad,Futurama,movie,0,claude,animated sci-fi comedy,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_c91afd987a,MARVEL'S THE AVENGERS,movie,0,claude,superhero blockbuster,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_6bf2b5ed6a,Oblivion,movie,1,claude,sci-fi mystery with an identity twist,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_a5021a041b,Game Of Thrones,movie,0,claude,fantasy drama,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_a7fc9bf885,The Dark Knight,movie,0,claude,superhero crime film,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_479ea032c7,V for Vendetta,movie,2,claude,dystopia and political ideology,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_dc40d69990,Atlas Shrugged II: The Strike,movie,1,claude,"Ayn Rand objectivism, BioShock's subject, as a drama",2026-10-07T14:35:14+00:00
+g2m-bioshock,m_f8623c89d2,300,movie,0,claude,stylised historical war,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_db0c8d1362,"Food, Inc.",movie,0,claude,food documentary,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_bb31f20260,Hitman,movie,0,claude,assassin action,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_4b3d4c60b3,Nikita,movie,0,claude,spy TV,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_ab5ae8d945,Ghost in the Shell,movie,1,claude,philosophical sci-fi about identity,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_8367a50e79,Interstellar (Collectible Gift Set),movie,0,claude,space drama,2026-10-07T14:35:14+00:00
+g2m-bioshock,m_cb944e444f,Alone in the Wilderness,movie,0,claude,wilderness documentary,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_fd5b687c1e,The Lord of the Rings - The Two Towers,movie,1,claude,"epic fantasy quest, Western rather than JRPG style",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_7cfc7ac3f8,The Chronicles of Narnia: Prince Caspian,movie,1,claude,"fantasy adventure, family tone",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_42f6efcaa7,The Simpsons,movie,0,claude,animated sitcom,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_049421aded,Sleeping Beauty,movie,0,claude,classic Disney fairy tale,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_f013b32784,"Last Airbender, The (BD Single)",movie,1,claude,"anime-inspired fantasy, weakly made",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_23c7125cfa,The Matrix,movie,2,claude,"rebels against a controlling system, stylised action",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_abf7ae1d04,Legend of the Seeker,movie,1,claude,fantasy adventure TV,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_03c7a371a8,Family Guy,movie,0,claude,animated sitcom,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_488140b741,The Dark Crystal,movie,1,claude,"fantasy, puppet fairy tale",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_c43f9a5130,Final Fantasy VII - Advent Children,movie,2,claude,Final Fantasy VII sequel film,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_f2083d8ab8,The Lord of the Rings: The Fellowship of the Ring,movie,1,claude,"epic fantasy quest, Western style",2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_c436aa36ab,Fire and Ice,movie,1,claude,animated sword-and-sorcery,2026-10-07T14:35:14+00:00
+g2m-final-fantasy-vii-1998,m_01df074412,Final Fantasy - The Spirits Within,movie,2,claude,Final Fantasy film,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_185c66eae0,Minecraft,game,0,claude,sandbox building game,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_e16fadfefa,Tomb Raider (2013),game,0,claude,"action adventure, no sci-fi",2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_419c88a76a,Final Fantasy X/X-2 HD,game,0,claude,fantasy JRPG,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_1ef02a3c41,The Elder Scrolls V: Skyrim,game,0,claude,high fantasy,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_9eed877e0d,Final Fantasy XII The Zodiac Age,game,0,claude,fantasy JRPG,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_7d9763f714,Grand Theft Auto V,game,0,claude,modern crime sandbox,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_d8b92879ea,Star Ocean: The Last Hope,game,1,claude,"sci-fi, but anime space opera",2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_ea6aeb9dde,Assassin's Creed: Ezio Trilogy,game,0,claude,historical assassin action,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_c30e042a26,Final Fantasy XV (2015),game,0,claude,fantasy road trip,2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_ac3a40a1e6,Dreamfall: The Longest Journey (2006),game,1,claude,"dystopian city and identity, mixed with fantasy",2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_3b391f7882,Alien: Isolation,game,1,claude,"atmospheric sci-fi with androids, horror not noir",2026-10-07T14:35:14+00:00
+m2g-blade-runner-2049,g_e5a5356459,Syberia 2 (2004),game,1,claude,melancholic adventure with automatons,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_1f1995f197,Batman Begins (2005),game,2,claude,"Batman, adapting Nolan's first film",2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_ee73651c4d,Injustice: Gods Among Us,game,1,claude,DC fighting game,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_700302b6e2,The Last of Us Remastered Hits,game,1,claude,"mature, dark tone, but no crime or hero",2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_51dd145749,Batman: Arkham City,game,2,claude,Batman: Arkham,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_ff45c7364d,BioShock Infinite,game,1,claude,dark story shooter,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_c31accf2e3,Batman: Arkham Origins (2013),game,2,claude,Batman: Arkham,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_4ac8697501,Batman: Arkham Asylum,game,2,claude,Batman: Arkham,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_1768ef4b66,Batman Vengeance,game,1,claude,"Batman, animated-series tone, weak game",2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_0bb08e16ed,Batman: Arkham Knight,game,2,claude,Batman: Arkham,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_7d9763f714,Grand Theft Auto V,game,1,claude,crime and heists,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_8310be0896,Call of Duty Modern Warfare 2,game,0,claude,military shooter,2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_e5c41a5225,Lego Batman (2013),game,1,claude,"Batman, but kid-friendly comedy",2026-10-07T14:35:14+00:00
+m2g-the-dark-knight,g_3191d7c002,DC Universe Online,game,1,claude,DC online game,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_fcd601f2b9,Final Fantasy X,game,1,claude,fantasy JRPG,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_82afa538c9,LEGO Lord of the Rings,game,2,claude,Lord of the Rings game (lighter tone),2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_35f804bcd4,Duke Nukem Forever: Balls of Steel Edition,game,0,claude,crude sci-fi shooter,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_78d4de37d9,WarCraft III: Reign of Chaos,game,2,claude,high-fantasy war with orcs and elves,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_2a68e79714,Lord of The Rings: The Return of The King,game,2,claude,Lord of the Rings game,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_53534cb4da,Starcraft II: Wings of Liberty,game,0,claude,sci-fi strategy,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_b7e62e7708,The Movies,game,0,claude,movie-studio sim,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_638da2fa78,Grand Theft Auto Vice City,game,0,claude,crime sandbox,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_b0bbc0a324,Lord of the Rings The Two Towers,game,2,claude,Lord of the Rings game,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_fe6d8f0993,The Lord of the Rings: The Two Towers,game,2,claude,Lord of the Rings game,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_36ad23ff8a,Halo: Combat Evolved (Not for Resale),game,0,claude,sci-fi shooter,2026-10-07T14:35:14+00:00
+m2g-lotr-fellowship,g_e50de1caeb,Odin Sphere Leifthrasir: Storybook Edition - PlayStation 4 Storybook Edition,game,1,claude,fairy-tale fantasy action,2026-10-07T14:35:14+00:00
+m2g-alien,g_9627f79917,Starlink Battle for Atlas - Nintendo Switch Starter Edition,game,0,claude,kid-friendly space game,2026-10-07T14:35:14+00:00
+m2g-alien,g_f34b704ab5,Aliens Versus Predator 2,game,2,claude,Alien franchise game,2026-10-07T14:35:14+00:00
+m2g-alien,g_dfe86df68f,Resident Evil 4 (2005),game,1,claude,horror action,2026-10-07T14:35:14+00:00
+m2g-alien,g_700302b6e2,The Last of Us Remastered Hits,game,1,claude,"survival horror tone, no space",2026-10-07T14:35:14+00:00
+m2g-alien,g_58721f83b5,Mass Effect Andromeda,game,1,claude,"space sci-fi, not horror",2026-10-07T14:35:14+00:00
+m2g-alien,g_fd01e428c5,Doom - Xbox One (Imported Version),game,1,claude,"sci-fi horror shooter, action not suspense",2026-10-07T14:35:14+00:00
+m2g-alien,g_3b391f7882,Alien: Isolation,game,2,claude,Alien franchise survival horror,2026-10-07T14:35:14+00:00
+m2g-alien,g_1b3d883000,Super Smash Bros. (2011),game,0,claude,party fighter,2026-10-07T14:35:14+00:00
+m2g-alien,g_42cd1bc6b9,No Man's Sky,game,1,claude,"space exploration, peaceful",2026-10-07T14:35:14+00:00
+m2g-alien,g_9c92830289,Sid Meier's Civilization: Beyond Earth,game,0,claude,strategy,2026-10-07T14:35:14+00:00
+m2g-alien,g_466e3d065d,Dead Space,game,2,claude,"sci-fi horror in space, Alien-inspired",2026-10-07T14:35:14+00:00
+m2g-alien,g_17ba9e002b,Metroid Prime (2002),game,2,claude,"isolated alien-world exploration, inspired by Alien",2026-10-07T14:35:14+00:00
+m2g-alien,g_4b843798da,Starfox Adventures (2001),game,0,claude,family space adventure,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_0bb08e16ed,Batman: Arkham Knight,game,0,claude,superhero game,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_c8fba92230,Uncharted 4: A Thief's End,game,1,claude,action spectacle,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_e16fadfefa,Tomb Raider (2013),game,1,claude,action survival,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_6bd698d0a9,Fallout: New Vegas,game,2,claude,post-apocalyptic wasteland,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_e62f94152b,Mad Max (2013),game,2,claude,Mad Max game,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_fd2b686301,Wolfenstein: The New Order,game,1,claude,over-the-top shooter,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_09c6b51c91,Enslaved: Odyssey To The West,game,2,claude,post-apocalyptic action,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_06dcb68e01,WB Games Mad Max,game,2,claude,Mad Max game,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_31a4bf6a03,inFAMOUS: First Light,game,0,claude,superhero game,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_73060d936d,Far Cry 4,game,1,claude,action shooter,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_b934a18b7f,Skyrim VR,game,0,claude,high fantasy,2026-10-07T14:35:14+00:00
+m2g-mad-max-fury-road,g_ffcc1cb8e6,Fallout 4,game,2,claude,post-apocalyptic wasteland,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_919d682044,Marvel’s Spider-Man,game,0,claude,superhero game,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_c8fba92230,Uncharted 4: A Thief's End,game,1,claude,action adventure,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_a0cc803a75,The Godfather: Blackhand Edition for,game,1,claude,"organised crime, slower",2026-10-07T14:35:14+00:00
+m2g-john-wick,g_07da36da46,Max Payne (2002),game,2,claude,revenge-driven gunfights,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_d498d411f7,Mafia III,game,2,claude,revenge crime shooter,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_b934a18b7f,Skyrim VR,game,0,claude,high fantasy,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_2455f8a13c,CSI: Fatal Conspiracy,game,0,claude,procedural,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_7d9763f714,Grand Theft Auto V,game,1,claude,crime sandbox,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_9569d31bdd,Assassin’s Creed Syndicate,game,1,claude,assassin action,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_fa7edb3413,Need for Speed: Undercover,game,0,claude,street racing,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_ffcc1cb8e6,Fallout 4,game,0,claude,post-apocalyptic RPG,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_73060d936d,Far Cry 4,game,1,claude,action shooter,2026-10-07T14:35:14+00:00
+m2g-john-wick,g_6f8fd16a4f,Bloodborne,game,0,claude,gothic action RPG,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_ac3a40a1e6,Dreamfall: The Longest Journey (2006),game,0,claude,fantasy adventure,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_ecfa410f46,LEGO Harry Potter: Years 5-7,game,0,claude,kids' fantasy,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_d8b92879ea,Star Ocean: The Last Hope,game,0,claude,space JRPG,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_36ab728b46,Prince of Persia Trilogy HD,game,0,claude,fantasy platformer,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_b934a18b7f,Skyrim VR,game,0,claude,high fantasy,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_8f778cd5f8,South Park: The Stick of Truth,game,0,claude,comedy RPG,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_36ad23ff8a,Halo: Combat Evolved (Not for Resale),game,0,claude,sci-fi shooter,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_5e22db19a5,Mortal Kombat vs DC Universe - Silver Shield,game,0,claude,fighting game,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_c8fba92230,Uncharted 4: A Thief's End,game,1,claude,jungle adventure spectacle,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_e16fadfefa,Tomb Raider (2013),game,1,claude,island survival adventure,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_700302b6e2,The Last of Us Remastered Hits,game,0,claude,post-apocalyptic drama,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_536bc8cab2,60GB System,game,0,claude,"a console, not a game",2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_185c66eae0,Minecraft,game,0,claude,sandbox building,2026-10-07T14:35:14+00:00
+m2g-jurassic-park,g_debec174f7,Assassin's Creed IV: Black Flag,game,0,claude,pirate adventure,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_0bb08e16ed,Batman: Arkham Knight,game,0,claude,superhero game,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_5e22db19a5,Mortal Kombat vs DC Universe - Silver Shield,game,0,claude,fighting game,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_36373b1aeb,"Persona 5 - PlayStation 4 ""Take Your Heart""",game,0,claude,school JRPG,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_45a5031232,Journey Collection,game,1,claude,"wordless journey, a sense of awe",2026-10-07T14:35:14+00:00
+m2g-interstellar,g_f244ff9e32,Dark Souls III: Day 1 Edition,game,0,claude,dark fantasy,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_4dd4e7fadf,Halo 4 - Xbox 360 (Standard Game),game,1,claude,space sci-fi shooter,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_3b391f7882,Alien: Isolation,game,1,claude,space sci-fi survival,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_667cb538ac,Digital Innovations 4190100 Clean Dr. Laser Lens Cleaner for,game,0,claude,"a lens cleaner, not a game",2026-10-07T14:35:14+00:00
+m2g-interstellar,g_489bc4a2e9,"Roblox Digital Gift Code for 1,200 Robux",game,0,claude,"a gift code, not a game",2026-10-07T14:35:14+00:00
+m2g-interstellar,g_f56d853a2d,Battlefield 4 (2013),game,0,claude,military shooter,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_ab3e5b8de1,The Suffering,game,0,claude,horror,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_e16fadfefa,Tomb Raider (2013),game,0,claude,action adventure,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_ffcc1cb8e6,Fallout 4,game,0,claude,post-apocalyptic RPG,2026-10-07T14:35:14+00:00
+m2g-interstellar,g_c8fba92230,Uncharted 4: A Thief's End,game,0,claude,action adventure,2026-10-07T14:35:14+00:00
