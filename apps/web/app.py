@@ -15,7 +15,7 @@ from crossverse.evaluation import judgments as J
 
 API = os.environ.get("CROSSVERSE_API_URL", "http://localhost:8000")
 DOMAIN_ICON = {"movie": "🎬", "game": "🎮"}
-TASTE_DEFAULT = 0.5
+TASTE_DEFAULT = 0.8  # best on the judged set with v11 (docs/evaluation.md#judged-evaluation)
 POOL_TASTES, POOL_K = (0.0, 0.5, 1.0), 5  # what the Rate tab asks you to judge, per query
 
 st.set_page_config(page_title="CrossVerse", page_icon="🎬", layout="wide")
