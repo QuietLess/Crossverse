@@ -143,6 +143,14 @@ moves a cell by ~1 point; most ratings are the LLM's; and v11 trades variety for
 franchises (Transformers → five Transformers games) and misreads some seeds (BioShock → Resident
 Evil, Pacific Rim instead of v10's V for Vendetta, Children of Men).
 
+With v12 the weakest seed is Blade Runner 2049 → games: sentence-embedding similarities between
+movie and game descriptions are nearly flat (std ≈ 0.04), and the best-fitting games are missing
+from the Amazon catalog (Observer, Detroit: Become Human) or share only "sci-fi" in their tags
+(Deus Ex, Cyberpunk 2077). Subtracting each domain's mean embedding doubles the spread but helped
+some seeds (Red Dead Redemption 2 → Unforgiven, Bone Tomahawk) and hurt others (BioShock → Saw,
+Scream), so it is not used. Blocking add-ons (expansions, figures, vouchers) in v12 moved taste 0.8
+from 59% good / 15% bad to 56% / 14%: some blocked add-ons had been rated as fits.
+
 ## Qualitative analysis
 
 `reports/error_analysis.md` lists 50 random movie→game and 50 game→movie holdout users with their
