@@ -50,7 +50,9 @@ def test_book_signals():
 
 
 def test_reasons_never_name_internal_retrievers():
+    import re
+
     from crossverse.explain.evidence import SOURCE_REASONS
 
-    internal = ("semantic", "two_tower", "als", "copref", "item_knn", "content", "popularity")
-    assert all(not any(w in text for w in internal) for text in SOURCE_REASONS.values())
+    internal = re.compile(r"\b(?:semantic|two_tower|als(?:_\w+)?|copref|item_knn|content|popularity)\b")
+    assert not [text for text in SOURCE_REASONS.values() if internal.search(text)]
