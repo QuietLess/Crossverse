@@ -11,11 +11,13 @@ from typing import Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from crossverse import __version__
-from crossverse.config import Settings, get_settings
+from crossverse.config import PROJECT_ROOT, Settings, get_settings
 from crossverse.features.themes import THEMES
 from crossverse.monitoring import metrics as M
 from crossverse.monitoring.registry import ModelRegistry
@@ -25,6 +27,7 @@ from crossverse.serving.storage import SQLStore, make_cache
 log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
+UI_DIR = PROJECT_ROOT / "apps" / "ui"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -333,5 +336,13 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
     @app.get("/metrics", tags=["ops"])
     def metrics() -> Response:
         return Response(generate_latest(M.REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
+    # Web UI (apps/ui: static HTML/JS that calls this API from the same origin).
+    if UI_DIR.exists():
+        app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
+
+        @app.get("/", include_in_schema=False)
+        def root() -> RedirectResponse:
+            return RedirectResponse("/ui/")
 
     return app

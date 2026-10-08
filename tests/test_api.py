@@ -125,3 +125,12 @@ def test_promotion_gate_and_guardrails(tmp_path):
     # genuine improvement -> promoted
     reg.write_manifest("d", {"test_metrics": {**base, "cross_domain_ndcg@10": 0.033}})
     assert reg.promote("d")[0] and reg.production_version() == "d"
+
+
+def test_web_ui_is_served(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
+    page = client.get("/ui/")
+    assert page.status_code == 200 and "CrossVerse" in page.text
+    for asset in ("app.js", "style.css"):
+        assert client.get(f"/ui/{asset}").status_code == 200

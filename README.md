@@ -95,8 +95,8 @@ python pipelines/publish.py --version v1        # gate + guardrails -> artifacts
 # ...or fully offline in ~30 s with the synthetic fixture (planted cross-domain taste)
 python pipelines/build_dataset.py --synthetic
 
-uvicorn apps.api.main:app --port 8000           # API docs at http://localhost:8000/docs
-streamlit run apps/web/app.py                   # demo UI (falls back to in-process engine)
+uvicorn apps.api.main:app --port 8000           # web UI at http://localhost:8000/ui , API docs at /docs
+streamlit run apps/web/app.py                   # research UI: Rate tab (judged set), admin (falls back to in-process engine)
 crossverse recommend "Blade Runner 2049" "Ex Machina" --to game
 
 docker compose -f infra/docker-compose.yml up --build   # API + web + Postgres + Redis + Prometheus + Grafana

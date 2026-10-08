@@ -14,7 +14,7 @@ from crossverse.serving.engine import _NOT_RECOMMENDABLE
     "Skylanders SWAP Force: Rip Tide Character", "Skylanders Giants Triple Pack #6 (Eruptor, Stealth Elf & Terrafin)",
     "Disney Infinity 3.0 Edition: Pixar's The Good Dinosaur Power Disc Pack", "Minecraft Game Voucher",
     "Star Wars: The Old Republic 60-Day Pre-paid Time Card", "Wii Hardware Bundle - Black",
-    "McAfee Total Protection 2015 | 3 Devices | PC Key Card",
+    "McAfee Total Protection 2015 | 3 Devices | PC Key Card", "The Sims 4 - Movie Hangout Stuff",
 ])
 def test_non_games_are_blocked(title):
     assert _NOT_RECOMMENDABLE.search(title)

@@ -69,7 +69,8 @@ _NOT_RECOMMENDABLE = re.compile(
     # prepaid time, vouchers, hardware bundles, add-ons that need the base game, non-game software
     r"|time\s*card|pre-?paid|voucher|gold\s*card|key\s*card|download\s*card|hardware\s*bundle|starter\s*bundle"
     r"|dualshock|guitar\s*bundle|wi-?fi\s*bundle|bundle\s*-\s*(?:black|white|blue|red|electric|neon)"
-    r"|expansion|upgrade\s*pack|challenger\s*pack|mcafee|norton|antivirus|total\s*protection)\b",
+    r"|expansion|upgrade\s*pack|challenger\s*pack|mcafee|norton|antivirus|total\s*protection"
+    r"|stuff(?:\s*pack)?\s*$|game\s*pack\s*$)\b",  # Sims add-ons: "The Sims 4 - Movie Hangout Stuff"
     re.I,
 )
 
