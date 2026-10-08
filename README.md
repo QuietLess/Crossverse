@@ -2,6 +2,9 @@
 
 > *If you liked this movie, what game should you play next — and vice versa?*
 
+**Try it: https://crossverse-app.web.app** (Cloud Run behind Firebase Hosting; the first visit after a
+quiet spell takes ~30 s to wake up).
+
 CrossVerse is a recommender that learns taste across **movies/TV and video games** from real
 shared-user behaviour: 119k Amazon users who liked items in both categories. It serves
 within-domain, movie→game, game→movie, mixed-profile and cold-start recommendations through a
@@ -101,6 +104,11 @@ crossverse recommend "Blade Runner 2049" "Ex Machina" --to game
 
 docker compose -f infra/docker-compose.yml up --build   # API + web + Postgres + Redis + Prometheus + Grafana
 ```
+
+Deploying (see the scripts' docstrings): `python scripts/deploy_cloudrun.py` builds the production
+model into a private image and serves it on Google Cloud Run; `python scripts/firebase_hosting.py`
+puts the short `*.web.app` URL in front of it. `scripts/deploy_space.py` does the same on Hugging Face
+Spaces (Docker Spaces need a PRO account).
 
 Common targets live in the [Makefile](Makefile): `make pipeline`, `make eda`, `make serve`, `make web`, `make test`, `make compose`.
 
