@@ -21,6 +21,7 @@ from pathlib import Path
 
 from crossverse.config import PROJECT_ROOT, get_settings, load_env
 from crossverse.monitoring.registry import ModelRegistry
+from crossverse.serving.engine import CrossVerseEngine
 
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
 
@@ -62,9 +63,12 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"1/3 model {version} -> {model_repo} (private)")
     api.create_repo(model_repo, repo_type="model", private=True, exist_ok=True)
-    for name in ("engine.pkl", "manifest.json"):
-        api.upload_file(path_or_fileobj=model_dir / name, path_in_repo=f"{version}/{name}", repo_id=model_repo,
-                        repo_type="model", commit_message=f"CrossVerse model {version}: {name}")
+    with tempfile.TemporaryDirectory() as tmp:
+        portable = Path(tmp) / "engine.pkl"  # re-saved without machine-specific paths (loads on Linux)
+        CrossVerseEngine.export_portable(model_dir / "engine.pkl", portable)
+        for name, src in (("engine.pkl", portable), ("manifest.json", model_dir / "manifest.json")):
+            api.upload_file(path_or_fileobj=src, path_in_repo=f"{version}/{name}", repo_id=model_repo,
+                            repo_type="model", commit_message=f"CrossVerse model {version}: {name}")
     api.upload_file(path_or_fileobj=version.encode(), path_in_repo="PRODUCTION", repo_id=model_repo,
                     repo_type="model", commit_message=f"Serve {version}")
 

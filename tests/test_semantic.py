@@ -56,6 +56,7 @@ def test_embeddings_are_cached_and_the_model_is_not_pickled(tmp_path):
     assert calls == [4, 1]  # only that item is re-encoded
     restored = pickle.loads(pickle.dumps(a))
     assert restored._embedder is None and np.array_equal(restored.embeddings_, a.embeddings_)
+    assert restored.cache_dir is None  # no machine-specific paths in the model file
 
 
 def test_item_text_puts_title_and_themes_first():

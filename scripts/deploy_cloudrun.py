@@ -5,6 +5,11 @@
 
 Needs the gcloud CLI, logged in (`gcloud auth login`) with a project set (`gcloud config set project ID`)
 that has billing and the Run, Cloud Build and Artifact Registry APIs enabled.
+New projects also need Cloud Build's service account to be allowed to build (once):
+
+    gcloud projects add-iam-policy-binding PROJECT_ID         --member=serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com         --role=roles/cloudbuild.builds.builder
+
+The engine is re-saved without machine-specific state (a pickled WindowsPath cannot load on Linux).
 
 The staged folder (code + production model) is built by Cloud Build into an image in the project's
 private Artifact Registry; nothing is published except the running service. The model holds data
@@ -25,6 +30,7 @@ from pathlib import Path
 
 from crossverse.config import PROJECT_ROOT, get_settings
 from crossverse.monitoring.registry import ModelRegistry
+from crossverse.serving.engine import CrossVerseEngine
 
 IGNORE = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache", "*.egg-info")
 
@@ -39,7 +45,7 @@ def gcloud() -> str:
     sys.exit("gcloud not found: install the Google Cloud SDK")
 
 
-def stage(dest: Path, version: str, model_dir: Path) -> None:
+def stage(dest: Path, version: str, model_dir: Path, portable: bool = True) -> None:
     shutil.copy(PROJECT_ROOT / "infra" / "cloudrun" / "Dockerfile", dest / "Dockerfile")
     for name in ("pyproject.toml", "README.md", "constraints.txt"):
         shutil.copy(PROJECT_ROOT / name, dest / name)
@@ -50,8 +56,11 @@ def stage(dest: Path, version: str, model_dir: Path) -> None:
         shutil.copytree(PROJECT_ROOT / "apps" / sub, dest / "apps" / sub, ignore=IGNORE)
     models = dest / "artifacts" / "models"
     (models / version).mkdir(parents=True)
-    for name in ("engine.pkl", "manifest.json"):
-        shutil.copy(model_dir / name, models / version / name)
+    shutil.copy(model_dir / "manifest.json", models / version / "manifest.json")
+    if portable:  # re-saved without machine-specific paths: a Windows pickle must load on Linux
+        CrossVerseEngine.export_portable(model_dir / "engine.pkl", models / version / "engine.pkl")
+    else:
+        shutil.copy(model_dir / "engine.pkl", models / version / "engine.pkl")
     (models / "PRODUCTION").write_text(version)
 
 

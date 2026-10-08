@@ -32,8 +32,29 @@ def test_cloud_run_stage_has_code_and_model_but_no_keys_or_datasets(tmp_path):
     (model / "manifest.json").write_text("{}")
     out = tmp_path / "stage"
     out.mkdir()
-    mod.stage(out, "vX", model)
+    mod.stage(out, "vX", model, portable=False)
     files = {p.relative_to(out).as_posix() for p in out.rglob("*") if p.is_file()}
     assert {"Dockerfile", "artifacts/models/PRODUCTION", "artifacts/models/vX/engine.pkl", "apps/ui/index.html"} <= files
     assert not [f for f in files if f.endswith((".env", ".parquet", ".jsonl", ".csv")) or f.startswith("data/")]
     assert (out / "artifacts/models/PRODUCTION").read_text() == "vX"
+
+
+def test_exported_engine_has_no_filesystem_paths(trained, tmp_path):
+    """A pickled WindowsPath crashed the Linux container; export_portable must strip such state."""
+    import pickle
+
+    from crossverse.retrieval.semantic import SemanticRetriever
+    from crossverse.serving.engine import CrossVerseEngine, _find_paths
+
+    engine, _, _ = trained
+    sem = SemanticRetriever(cache_dir=tmp_path)  # holds a Path, like a trained v11+ engine
+    sem.embeddings_ = engine.content.embeddings_
+    engine.generator.retrievers["semantic"] = sem
+    try:
+        assert _find_paths(engine) == []  # __getstate__ already drops it
+        engine.save(tmp_path / "e.pkl")
+        CrossVerseEngine.export_portable(tmp_path / "e.pkl", tmp_path / "portable.pkl")
+        with open(tmp_path / "portable.pkl", "rb") as fh:
+            assert "Path" not in str(pickle.load(fh).generator.retrievers["semantic"].cache_dir)
+    finally:
+        del engine.generator.retrievers["semantic"]

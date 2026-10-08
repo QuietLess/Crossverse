@@ -56,6 +56,7 @@ class SemanticRetriever(Retriever):
     def __getstate__(self) -> dict[str, Any]:
         state = self.__dict__.copy()
         state["_embedder"] = None  # an ONNX session is not picklable (and not needed to score histories)
+        state["cache_dir"] = None  # training-only, and a WindowsPath cannot be unpickled on Linux (Cloud Run)
         return state
 
     # ------------------------------------------------------------------------------------------

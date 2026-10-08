@@ -433,8 +433,40 @@ class CrossVerseEngine:
             self.__dict__.pop(lazy, None)
 
     @staticmethod
+    def export_portable(src: Path, dst: Path) -> None:
+        """Re-save an engine so it loads on any OS: a pickled pathlib.WindowsPath (or PosixPath) cannot be
+        unpickled on the other platform, which crashed the Linux container on Cloud Run."""
+        engine = CrossVerseEngine.load(src)  # current __getstate__ hooks drop machine-specific state
+        stray = _find_paths(engine)
+        if stray:
+            raise ValueError(f"engine still holds filesystem paths: {stray}")
+        engine.save(dst)
+
+    @staticmethod
     def load(path: Path) -> CrossVerseEngine:
         with open(path, "rb") as fh:
             engine: CrossVerseEngine = pickle.load(fh)
         engine.refresh_display_titles()
         return engine
+
+
+def _find_paths(obj: Any, where: str = "engine", depth: int = 0, seen: set[int] | None = None) -> list[str]:
+    """Attribute paths under `obj` that hold a pathlib path (they make a pickle OS-specific)."""
+    import pathlib
+
+    seen = set() if seen is None else seen
+    if id(obj) in seen or depth > 8:
+        return []
+    seen.add(id(obj))
+    if isinstance(obj, pathlib.PurePath):
+        return [where]
+    if isinstance(obj, dict):
+        items: Any = obj.items()
+    elif isinstance(obj, list | tuple):
+        items = enumerate(obj)
+    elif type(obj).__module__.startswith("crossverse") and hasattr(obj, "__dict__"):
+        state = obj.__getstate__() if hasattr(type(obj), "__getstate__") and type(obj).__getstate__ is not object.__getstate__ else vars(obj)
+        items = state.items()
+    else:
+        return []
+    return [p for k, v in items for p in _find_paths(v, f"{where}.{k}", depth + 1, seen)]
