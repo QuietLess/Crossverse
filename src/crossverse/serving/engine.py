@@ -62,7 +62,14 @@ _NOT_RECOMMENDABLE = re.compile(
     r"|\d[\d,]*\s+(?:microsoft\s+)?points|\d[\d,]*\s+[\w ]{0,20}?credits|robux|gift\s*code"
     # hardware: consoles by storage size ("60GB System", "Slim 120GB"), systems, accessories
     r"|\d+\s*gb|video\s*game\s*system|audio\s*system|lens\s*cleaner|connector|memory\s*unit|kinect\s*sensor"
-    r"|(?:wii|ps\d|base|horizontal|vertical)\s+stand|compatible\s+with|screen\s*protector)\b",
+    r"|(?:wii|ps\d|base|horizontal|vertical)\s+stand|compatible\s+with|screen\s*protector"
+    # toys-to-life figures ("Starter Pack" is the game itself and stays)
+    r"|(?:single|triple|mini|battle|trap|vehicle)\s+(?:character\s+|trap\s+)?pack|character\s+pack|character\s*$"
+    r"|character\s*\(|power\s*disc|toy\s*figure"
+    # prepaid time, vouchers, hardware bundles, add-ons that need the base game, non-game software
+    r"|time\s*card|pre-?paid|voucher|gold\s*card|key\s*card|download\s*card|hardware\s*bundle|starter\s*bundle"
+    r"|dualshock|guitar\s*bundle|wi-?fi\s*bundle|bundle\s*-\s*(?:black|white|blue|red|electric|neon)"
+    r"|expansion|upgrade\s*pack|challenger\s*pack|mcafee|norton|antivirus|total\s*protection)\b",
     re.I,
 )
 
