@@ -356,3 +356,14 @@ main { max-width: 1320px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 40px) 4
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 .mood.more { border-style: dashed; color: var(--muted); }
+
+/* ---------- TV series: a third colour next to film amber and game cyan ---------- */
+:root { --tv: #ff5ea8; }
+.tv-text { color: var(--tv); }
+.tag.tv { color: #22050f; background: var(--tv); }
+.card.tv { --glow: var(--tv); }
+.pick.tv { border-color: color-mix(in srgb, var(--tv) 55%, var(--line-2)); }
+.direction-label { align-self: center; color: var(--muted); font-size: 13px; font-weight: 600; margin-right: 2px; }
+.direction button[aria-checked="true"][data-to="film"] { border-color: var(--film); box-shadow: 0 0 0 3px color-mix(in srgb, var(--film) 22%, transparent), 0 8px 26px color-mix(in srgb, var(--film) 28%, transparent); }
+.direction button[aria-checked="true"][data-to="tv"] { border-color: var(--tv); box-shadow: 0 0 0 3px color-mix(in srgb, var(--tv) 22%, transparent), 0 8px 26px color-mix(in srgb, var(--tv) 28%, transparent); }
+@media (max-width: 460px) { .direction-label { display: none; } }

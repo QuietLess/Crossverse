@@ -13,7 +13,6 @@ from typing import Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
-from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
@@ -29,6 +28,7 @@ from crossverse.serving.storage import SQLStore, make_cache
 log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
+Target = Literal["movie", "game", "film", "tv"]
 # Web UI files. The default fits a source checkout; installed (non-editable) packages, as in the container
 # images, set CROSSVERSE_UI_DIR because PROJECT_ROOT then points into site-packages.
 UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui")
@@ -47,7 +47,8 @@ class ProfileItem(BaseModel):
 class RecommendRequest(BaseModel):
     liked: list[ProfileItem] = Field(default_factory=list)
     disliked: list[str] = Field(default_factory=list, description="item_ids or titles")
-    target_domain: Domain | None = Field(None, description="movie, game, or null for both")
+    target_domain: Target | None = Field(None, description="game, film (movies only), tv (series only), "
+                                                     "movie (films and TV), or null for everything")
     k: int = Field(10, ge=1, le=100)
     preferences: list[str] = Field(default_factory=list, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
     free_text: str = Field("", max_length=500, description="cold-start free text, e.g. 'dark sci-fi about AI'")
@@ -88,6 +89,7 @@ class RecItem(BaseModel):
     year: int | None
     evidence: dict[str, Any]
     image: str | None = Field(None, description="cover image URL (Amazon product image), if known")
+    kind: str = Field("", description="movie, tv or game")
 
 
 class RecommendResponse(BaseModel):
@@ -348,11 +350,10 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         return Response(generate_latest(M.REGISTRY), media_type=CONTENT_TYPE_LATEST)
 
     # Web UI (apps/ui: static HTML/JS that calls this API from the same origin).
+    # Mounted after every API route, so "/" serves the app (index.html, app.js, ...) and API paths still
+    # win; /ui/ keeps older shared links working.
     if UI_DIR.exists():
         app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
-
-        @app.get("/", include_in_schema=False)
-        def root() -> RedirectResponse:
-            return RedirectResponse("/ui/")
+        app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui-root")
 
     return app

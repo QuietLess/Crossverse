@@ -39,6 +39,7 @@ class Recommendation:
     year: int | None
     evidence: dict[str, Any]
     image: str | None = None
+    kind: str = ""  # "movie" | "tv" | "game"
 
 
 @dataclass
@@ -87,6 +88,14 @@ _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "mov
 _BOOK_REVIEW = re.compile(
     r"\b(?:publishers\s+weekly|booklist|kirkus(?:\s+reviews)?|school\s+library\s+journal|library\s+journal)\b", re.I)
 _GUIDE_TITLE = re.compile(r"\b(?:strategy|official)\s+(?:nintendo\s+)?guide\b|\bguide\s+final\s+fantasy\b", re.I)
+
+KIND_TARGETS = {"film": "movie", "tv": "tv"}  # extra API targets: one kind of the movie domain
+_TV_TITLE = re.compile(
+    r"\b(?:seasons?\s*(?:\d|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"|(?:the\s+)?complete\s+(?:first|second|third|fourth|fifth|sixth|seventh|\d+(?:st|nd|rd|th))\s+season"
+    r"|complete\s+series|original\s+series|animated\s+series|tv\s+series|television\s+series|mini-?series"
+    r"|series\s+\d|vol(?:ume)?\.?\s*\d)", re.I)
+_TV_TEXT = re.compile(r"\b(?:season|episodes|series premiere|tv series|television series|sitcom|miniseries)\b", re.I)
 
 TASTE_MIN_FANS = 20  # taste mode only promotes titles at least this many training users liked
 
@@ -187,6 +196,19 @@ class CrossVerseEngine:
             self.__dict__["_compilations"] = np.flatnonzero(hit & (self.catalog.domain == 0))
         return self.__dict__["_compilations"]
 
+    def kinds(self) -> np.ndarray:
+        """Per item: "game", "tv" or "movie". Amazon files films and series on one shelf; TMDB's answer wins
+        (matched items), otherwise strong TV signals in the title or description decide."""
+        if "_kinds" not in self.__dict__:
+            items = self.catalog.items
+            movie = self.catalog.domain == 0
+            ext = items["ext_kind"].fillna("").to_numpy() if "ext_kind" in items else np.full(len(items), "")
+            guess = (items["title"].str.contains(_TV_TITLE)
+                     | (items["text"].fillna("").str[:1500].str.count(_TV_TEXT) >= 3)).to_numpy()
+            tv = movie & ((ext == "tv") | ((ext == "") & guess))
+            self.__dict__["_kinds"] = np.where(~movie, "game", np.where(tv, "tv", "movie"))
+        return self.__dict__["_kinds"]
+
     def quality(self) -> np.ndarray:
         """Items liked by at least TASTE_MIN_FANS users: the pool taste mode may promote."""
         return self.popularity >= TASTE_MIN_FANS
@@ -201,6 +223,10 @@ class CrossVerseEngine:
         if drop_compilations:
             blocked = np.union1d(blocked, self.compilations())
         exclude = blocked if exclude is None else np.union1d(exclude, blocked)
+        if target_domain in KIND_TARGETS:  # "film" / "tv": the movie domain, one kind of it
+            wanted = KIND_TARGETS[target_domain]
+            other = np.flatnonzero((self.catalog.domain == 0) & (self.kinds() != wanted))
+            exclude, target_domain = np.union1d(exclude, other), "movie"
         taste = float(np.clip(taste, 0.0, 1.0)) if len(history) else 0.0
         quality = self.quality() if taste > 0 else None
         cands = self.generator.generate(history, target_domain, exclude, preferences, free_text, quality)
@@ -294,6 +320,7 @@ class CrossVerseEngine:
                     recommendation_id=uuid.uuid4().hex[:16], item_id=str(row["item_id"]), title=str(row["title"]),
                     domain=str(row["domain"]), rank=rank + 1, score=float(scores[j]), sources=srcs,
                     themes=list(row["themes"]), year=year, evidence=ev, image=_image(row),
+                    kind=str(self.kinds()[i]),
                 )
             )
         return EngineResult(out, self.version, (time.perf_counter() - t0) * 1000, len(cands.idx), mix, cold)
@@ -341,7 +368,7 @@ class CrossVerseEngine:
         return {
             "item_id": str(row["item_id"]), "title": str(row["title"]), "domain": str(row["domain"]),
             "themes": list(row["themes"]), "year": int(row["year"]) if row["year"] and row["year"] > 0 else None,
-            "popularity": int(self.popularity[i]), "image": _image(row),
+            "popularity": int(self.popularity[i]), "image": _image(row), "kind": str(self.kinds()[i]),
         }
 
     @property
@@ -441,7 +468,7 @@ class CrossVerseEngine:
         self._titles = items["title"].to_numpy()
         self._norm_titles = np.array([_norm(t) for t in self._titles])
         self.explainer.titles = self._titles
-        for lazy in ("_prefix", "_match", "_ineligible", "_compilations"):  # rebuilt with current rules
+        for lazy in ("_prefix", "_match", "_ineligible", "_compilations", "_kinds"):  # rebuilt with current rules
             self.__dict__.pop(lazy, None)
 
     @staticmethod

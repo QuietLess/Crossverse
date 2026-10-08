@@ -65,8 +65,11 @@ function cover(item, cls = "thumb") {
 }
 
 const year = (item) => (item.year && !String(item.title).includes(String(item.year)) ? item.year : "");
-const domainLabel = (d) => (d === "game" ? "Game" : "Movie / TV");
-const tag = (d) => h("span", { class: `tag ${d}` }, d === "game" ? "Game" : "Film·TV");
+// kind: "movie" | "tv" | "game" (older API responses only have domain)
+const kindOf = (it) => it.kind || (it.domain === "game" ? "game" : "movie");
+const KIND_LABEL = { movie: "Movie", tv: "TV series", game: "Game" };
+const domainLabel = (it) => KIND_LABEL[kindOf(it)];
+const tag = (it) => h("span", { class: `tag ${kindOf(it)}` }, { movie: "Film", tv: "TV", game: "Game" }[kindOf(it)]);
 
 let toastTimer;
 function toast(msg) {
@@ -96,7 +99,8 @@ function saveUrl() {
 
 async function loadUrl() {
   const p = new URLSearchParams(location.search);
-  state.to = ["game", "movie", "both"].includes(p.get("to")) ? p.get("to") : "game";
+  const to = p.get("to") === "movie" ? "film" : p.get("to");  // links from before TV got its own tab
+  state.to = ["game", "film", "tv", "both"].includes(to) ? to : "game";
   state.toTouched = p.has("to");
   const t = Number(p.get("t"));
   state.taste = p.has("t") && t >= 0 && t <= 1 ? t : 0.8;
@@ -130,7 +134,7 @@ function renderDropdown() {
       onmousedown: (e) => { e.preventDefault(); addPick(it); },
     }, cover(it), h("div", {},
       h("div", { class: "t" }, it.title, " ", h("span", { class: "year" }, year(it))),
-      h("div", { class: "s" }, tag(it.domain), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
+      h("div", { class: "s" }, tag(it), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
   });
   dropdown.hidden = false;
   search.parentElement.setAttribute("aria-expanded", "true");
@@ -177,14 +181,14 @@ document.addEventListener("keydown", (e) => {
 function addPick(item, liked = true) {
   if (state.picks.some((x) => x.item_id === item.item_id)) return;
   state.picks.push({ ...item, liked });
-  if (!state.toTouched && state.picks.length === 1) state.to = item.domain === "game" ? "movie" : "game";
+  if (!state.toTouched && state.picks.length === 1) state.to = item.domain === "game" ? "film" : "game";
   search.value = "";
   closeDropdown();
   changed();
 }
 
 function renderPicks() {
-  $("#picks").replaceChildren(...state.picks.map((p) => h("li", { class: `pick ${p.domain}${p.liked ? "" : " disliked"}` },
+  $("#picks").replaceChildren(...state.picks.map((p) => h("li", { class: `pick ${kindOf(p)}${p.liked ? "" : " disliked"}` },
     cover(p),
     h("span", { class: "t", title: p.title }, p.title),
     h("button", {
@@ -226,8 +230,10 @@ function renderControls() {
 for (const b of document.querySelectorAll(".direction [role=radio]")) {
   b.addEventListener("click", () => { state.to = b.dataset.to; state.toTouched = true; changed(); });
 }
+let lastScreen = "film";  // the swap button returns to whichever of Movies / TV was used last
 $("#swap").addEventListener("click", (e) => {
-  state.to = state.to === "game" ? "movie" : "game";
+  if (state.to === "film" || state.to === "tv") lastScreen = state.to;
+  state.to = state.to === "game" ? lastScreen : "game";
   state.toTouched = true;
   e.currentTarget.classList.toggle("spin");
   changed();
@@ -272,7 +278,7 @@ async function emptyState() {
   const found = await Promise.all(FAVOURITES.slice(0, 8).map((ex) =>
     api(`/items/search?q=${encodeURIComponent(ex.q)}&domain=${ex.domain}&limit=1`).then((r) => r[0]).catch(() => null)));
   starters.replaceChildren(...found.filter(Boolean).map((it) => h("button", { type: "button", class: "starter", onclick: () => addPick(it) },
-    h("div", { class: "poster" }, cover(it), tag(it.domain)), h("span", {}, it.title))));
+    h("div", { class: "poster" }, cover(it), tag(it)), h("span", {}, it.title))));
 }
 
 const recommend = debounce(async () => {
@@ -311,7 +317,7 @@ function because(it) {
 }
 
 function renderResults(res, ms) {
-  const label = { game: "Games", movie: "Movies & TV", both: "Movies, TV & games" }[state.to];
+  const label = { game: "Games", film: "Movies", tv: "TV series", both: "Movies, TV & games" }[state.to];
   $("#results-title").textContent = `${label} for you`;
   $("#results-meta").textContent = `${res.items.length} picks · ${res.candidate_count} candidates · ${ms} ms`;
   $("#model-badge").textContent = `model ${res.model_version} · ${ms} ms`;
@@ -357,9 +363,9 @@ function tilt(el) {
 }
 
 function card(it, rank, compact = false) {
-  const el = h("article", { class: `card ${it.domain}`, tabindex: "0", "aria-label": `${it.title}, ${domainLabel(it.domain)}`, style: `animation-delay:${Math.min(rank || 0, 14) * 25}ms` },
+  const el = h("article", { class: `card ${kindOf(it)}`, tabindex: "0", "aria-label": `${it.title}, ${domainLabel(it)}`, style: `animation-delay:${Math.min(rank || 0, 14) * 25}ms` },
     h("span", { class: "shimmer" }),
-    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it.domain), compact ? null : quickActions(it)),
+    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), compact ? null : quickActions(it)),
     h("div", { class: "card-body" },
       h("div", { class: "card-title" }, it.title, " ", h("span", { class: "year" }, year(it))),
       compact ? null : h("div", { class: "pills" }, (it.themes || []).slice(0, 3).map((t) => h("span", { class: "pill" }, t))),
@@ -376,7 +382,7 @@ function feature(it) {
   const reason = it.evidence?.summary?.replace(/^Recommended because /, "").replace(/^./, (c) => c.toUpperCase());
   const el = h("article", { class: "feature", tabindex: "0", "aria-label": `Top match: ${it.title}` },
     it.image ? h("div", { class: "backdrop", style: `background-image:url("${it.image.replace(/"/g, "%22")}")` }) : null,
-    h("div", { class: "poster" }, cover(it), tag(it.domain)),
+    h("div", { class: "poster" }, cover(it), tag(it)),
     h("div", {},
       h("div", { class: "eyebrow" }, "★ Top match"),
       h("h3", {}, it.title, " ", h("span", { class: "year" }, year(it))),
@@ -406,17 +412,17 @@ async function openDetail(it) {
   $("#detail-body").replaceChildren(
     h("div", { class: "detail-top" },
       it.image ? h("div", { class: "backdrop", style: `background-image:url("${it.image.replace(/"/g, "%22")}")` }) : null,
-      h("div", { class: "poster" }, cover(it), tag(it.domain)),
+      h("div", { class: "poster" }, cover(it), tag(it)),
       h("div", {},
         h("h3", { id: "detail-title" }, it.title),
-        h("div", { class: "meta" }, [domainLabel(it.domain), year(it)].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, [domainLabel(it), year(it)].filter(Boolean).join(" · ")),
         h("div", { class: "pills", style: "margin-top:10px" }, (it.themes || []).map((t) => h("span", { class: "pill" }, t))),
         ev.summary ? h("p", {}, ev.summary) : null,
         facts.length ? h("dl", { class: "facts" }, facts.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])) : null,
         h("div", { class: "detail-actions" },
           h("button", { type: "button", class: "btn primary", onclick: () => { addPick(it); dialog.close(); toast(`♥ Added ${it.title}`); } }, "♥ Add to my taste"),
           h("button", { type: "button", class: "btn", onclick: () => { addPick(it, false); dialog.close(); } }, "✕ Not my thing"),
-          h("a", { class: "btn", href: `https://www.google.com/search?q=${encodeURIComponent(`${it.title} ${it.domain === "game" ? "video game" : "film"}`)}`, target: "_blank", rel: "noopener" }, "Look it up ↗")))),
+          h("a", { class: "btn", href: `https://www.google.com/search?q=${encodeURIComponent(`${it.title} ${{ game: "video game", tv: "TV series", movie: "film" }[kindOf(it)]}`)}`, target: "_blank", rel: "noopener" }, "Look it up ↗")))),
     h("p", { class: "row-title" }, "More like this"),
     h("div", { class: "row", id: "similar-row" }, Array.from({ length: 6 }, () => h("div", { class: "skeleton" }, h("div", { class: "poster" })))));
   if (!dialog.open) dialog.showModal();

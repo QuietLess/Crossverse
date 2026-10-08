@@ -128,9 +128,21 @@ def test_promotion_gate_and_guardrails(tmp_path):
 
 
 def test_web_ui_is_served(client):
-    r = client.get("/", follow_redirects=False)
-    assert r.status_code in (302, 307) and r.headers["location"] == "/ui/"
-    page = client.get("/ui/")
-    assert page.status_code == 200 and "CrossVerse" in page.text
-    for asset in ("app.js", "style.css"):
-        assert client.get(f"/ui/{asset}").status_code == 200
+    for prefix in ("/", "/ui/"):  # the root serves the app; /ui/ keeps older links working
+        page = client.get(prefix)
+        assert page.status_code == 200 and "CrossVerse" in page.text
+        for asset in ("app.js", "style.css", "logo.svg"):
+            assert client.get(f"{prefix}{asset}").status_code == 200
+    assert client.get("/health").json()["status"] == "ok"  # API routes still win over the static mount
+    assert client.get("/docs").status_code == 200
+
+
+def test_film_and_tv_targets(client, trained):
+    engine, _, _ = trained
+    title = engine.catalog.items.sort_values("popularity").iloc[-1]["title"]
+    for target in ("film", "tv", "movie", "game"):
+        r = client.post("/recommend", json={"liked": [{"item": title}], "target_domain": target, "k": 5})
+        assert r.status_code == 200, r.text
+        kinds = {i["kind"] for i in r.json()["items"]}
+        expected = {"film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}, "game": {"game"}}[target]
+        assert kinds <= expected

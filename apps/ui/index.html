@@ -34,20 +34,22 @@
   <main>
     <section class="hero" aria-labelledby="hero-title">
       <h1 id="hero-title">Find your next <span class="shine">obsession</span>.</h1>
-      <p class="sub">Tell us what you love. We cross it over: <b class="film-text">movies</b> ⇄ <b class="game-text">games</b>.</p>
+      <p class="sub">Tell us what you love. We cross it over: <b class="film-text">movies</b>, <b class="tv-text">series</b> ⇄ <b class="game-text">games</b>.</p>
 
       <div class="direction" role="radiogroup" aria-label="What to recommend">
-        <button type="button" role="radio" data-to="game"><span class="from">🎬</span><span class="arrow">→</span><span class="to">🎮</span> Games</button>
-        <button type="button" class="swap" id="swap" aria-label="Swap direction" title="Swap direction">⇄</button>
-        <button type="button" role="radio" data-to="movie"><span class="from">🎮</span><span class="arrow">→</span><span class="to">🎬</span> Movies &amp; TV</button>
-        <button type="button" role="radio" data-to="both" class="both">✦ Both</button>
+        <span class="direction-label">Show me</span>
+        <button type="button" role="radio" data-to="game">🎮 Games</button>
+        <button type="button" role="radio" data-to="film">🎬 Movies</button>
+        <button type="button" role="radio" data-to="tv">📺 TV series</button>
+        <button type="button" role="radio" data-to="both">✦ Everything</button>
+        <button type="button" class="swap" id="swap" aria-label="Swap games and movies" title="Swap games ⇄ movies / TV">⇄</button>
       </div>
 
       <div class="panel">
         <div class="search" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="search-results">
           <span class="search-icon" aria-hidden="true">⌕</span>
           <input id="search" type="search" autocomplete="off" spellcheck="false"
-                 placeholder="Add a movie, show or game you love…"
+                 placeholder="Add a movie, TV series or game you love…"
                  aria-autocomplete="list" aria-controls="search-results">
           <kbd class="kbd" aria-hidden="true">/</kbd>
           <ul id="search-results" class="dropdown" role="listbox" hidden></ul>
