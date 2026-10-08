@@ -73,3 +73,9 @@ def test_engine_refresh_cleans_titles_and_search(trained, monkeypatch):
     assert engine.search(clean, limit=1)[0]["item_id"] == engine.catalog.items.at[i, "item_id"]
     monkeypatch.undo()
     engine.__dict__.pop("_prefix", None), engine.__dict__.pop("_match", None)
+
+
+def test_display_keeps_film_volumes():
+    assert display_title("Kill Bill: Volume 2 [Blu-ray]", "movie") == "Kill Bill: Volume 2"
+    assert display_title("Guardians of the Galaxy Vol. 2 (Bonus Content)", "movie") == "Guardians of the Galaxy Vol. 2"
+    assert display_title("Cowboy Bebop, Vol. 1 DVD", "movie") == "Cowboy Bebop"

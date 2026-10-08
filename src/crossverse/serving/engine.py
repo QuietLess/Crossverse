@@ -38,6 +38,7 @@ class Recommendation:
     themes: list[str]
     year: int | None
     evidence: dict[str, Any]
+    image: str | None = None
 
 
 @dataclass
@@ -56,7 +57,12 @@ _NOT_RECOMMENDABLE = re.compile(
     r"|v-?bucks|coins?\s*pack|points?\s*pack"
     # accessories Amazon files under "Games"
     r"|collectible\s*case|case\s+for|controller|headset|charg(?:er|ing)|amiibo|figurine|console\s*bundle"
-    r"|fight\s*stick|arcade\s*stick|starship\s*pack|weapon\s*pack)\b",
+    r"|fight\s*stick|arcade\s*stick|starship\s*pack|weapon\s*pack"
+    # currency with an amount ("Xbox LIVE 1600 Microsoft Points", "500 Halo Credits", "1,200 Robux")
+    r"|\d[\d,]*\s+(?:microsoft\s+)?points|\d[\d,]*\s+[\w ]{0,20}?credits|robux|gift\s*code"
+    # hardware: consoles by storage size ("60GB System", "Slim 120GB"), systems, accessories
+    r"|\d+\s*gb|video\s*game\s*system|audio\s*system|lens\s*cleaner|connector|memory\s*unit|kinect\s*sensor"
+    r"|(?:wii|ps\d|base|horizontal|vertical)\s+stand|compatible\s+with|screen\s*protector)\b",
     re.I,
 )
 
@@ -68,6 +74,32 @@ def _norm(s: str) -> str:
 _TRAILING_YEAR = re.compile(r"\s*[(\[]\s*((?:18|19|20)\d\d)\s*[)\]]\s*$")
 _DOMAIN_PREFIX = re.compile(r"^\s*(movie|film|tv|show|game)\s*:\s*", re.I)
 _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "movie", "game": "game"}
+
+
+TASTE_MIN_FANS = 20  # taste mode only promotes titles at least this many training users liked
+
+_COMPILATION = re.compile(
+    r"\b(?:\d+|two|three|four|five|six|seven|eight|nine|ten)[\s-]*(?:film|movie|feature)s?\b|\btrilogy\b|\bquadrilogy\b"
+    r"|\banthology\b|\b(?:double|triple)\s+feature\b|\bfavorites\b|\bbox\s*set\b|\bmovie\s+collection\b"
+    r"|\bcomplete\s+(?:saga|collection)\b|\bcollection\s*(?:\(|$)|\s/\s.+\s/\s",
+    re.I,
+)
+
+
+_TV_SET = re.compile(r"\bseasons?\b|\bseries\b", re.I)
+
+
+def _percentile(x: np.ndarray) -> np.ndarray:
+    """Rank-normalise to [0, 1] (1 = best), so scores on different scales can be blended."""
+    if len(x) < 2:
+        return np.ones(len(x))
+    return np.argsort(np.argsort(x, kind="stable"), kind="stable") / (len(x) - 1)
+
+
+def _image(row: Any) -> str | None:
+    """Cover image URL; catalogs built before images were collected have no column."""
+    url = row.get("image") if hasattr(row, "get") else None
+    return str(url) if isinstance(url, str) and url else None
 
 
 def _match_key(title: str) -> str:
@@ -126,12 +158,32 @@ class CrossVerseEngine:
             self.__dict__["_ineligible"] = np.flatnonzero(hit & (self.catalog.domain == 1))
         return self.__dict__["_ineligible"]
 
+    def compilations(self) -> np.ndarray:
+        """Movie box sets and multi-film packs ("Complete 8-Film Collection", "Trilogy", "A / B / C").
+        Not recommended: they bundle works the user may already know and crowd out single titles."""
+        if "_compilations" not in self.__dict__:
+            # A TV show's season set *is* the show (seasons are merged into one item): keep it.
+            hit = np.array([bool(_COMPILATION.search(t)) and not _TV_SET.search(t) for t in self._titles])
+            self.__dict__["_compilations"] = np.flatnonzero(hit & (self.catalog.domain == 0))
+        return self.__dict__["_compilations"]
+
+    def quality(self) -> np.ndarray:
+        """Items liked by at least TASTE_MIN_FANS users: the pool taste mode may promote."""
+        return self.popularity >= TASTE_MIN_FANS
+
     def rank(self, history: History, target_domain: str | None, k: int, exclude: np.ndarray | None = None,
              preferences: list[str] | None = None, free_text: str = "", use_ranker: bool = True,
-             diversify_results: bool = True):
+             diversify_results: bool = True, taste: float = 0.0, drop_compilations: bool = True):
+        """taste in [0, 1]: 0 = the trained ranker ("what similar fans liked"), 1 = description similarity
+        to the history among well-liked titles ("similar story & setting"). In between, a blend of the
+        two percentile ranks. Only applies to non-empty histories."""
         blocked = self.ineligible()
+        if drop_compilations:
+            blocked = np.union1d(blocked, self.compilations())
         exclude = blocked if exclude is None else np.union1d(exclude, blocked)
-        cands = self.generator.generate(history, target_domain, exclude, preferences, free_text)
+        taste = float(np.clip(taste, 0.0, 1.0)) if len(history) else 0.0
+        quality = self.quality() if taste > 0 else None
+        cands = self.generator.generate(history, target_domain, exclude, preferences, free_text, quality)
         if self.ranker is not None and use_ranker and len(cands.idx):
             X = self.features.build(history, cands, preferences)
             scores = self.ranker.predict(X)
@@ -139,6 +191,12 @@ class CrossVerseEngine:
             scores = np.zeros(len(cands.idx))
             for r in cands.ranks.values():
                 scores += 1.0 / (60.0 + r)
+        if taste > 0 and quality is not None and len(cands.idx):
+            # Below the quality floor an item keeps only its behavioural share: similarity alone
+            # must not lift a title almost nobody liked.
+            similar = cands.scores[self.generator.similarity_source()]
+            sim = np.where(quality[cands.idx], _percentile(similar), 0.0)
+            scores = (1 - taste) * _percentile(scores) + taste * sim
         if len(history) == 0 and (preferences or free_text) and len(cands.idx):
             # Explicit-intent rule: a cold-start user who asked for "cyberpunk" sees cyberpunk
             # titles first whenever at least k candidates match. (Offline this costs a little
@@ -194,13 +252,13 @@ class CrossVerseEngine:
     def recommend(self, liked: list[tuple[str, float]], disliked: list[str] | None = None,
                   target_domain: str | None = None, k: int = 10, preferences: list[str] | None = None,
                   free_text: str = "", exclude_ids: list[str] | None = None, explain: bool = True,
-                  diversify_results: bool = True) -> EngineResult:
+                  diversify_results: bool = True, taste: float = 0.0) -> EngineResult:
         t0 = time.perf_counter()
         history = self.build_history(liked, disliked)
         exclude = np.unique(np.concatenate([history.idx, self.catalog.idx(exclude_ids or [])]))
         cold = len(history) == 0
         cands, scores, order = self.rank(history, target_domain, k, exclude, preferences, free_text,
-                                         diversify_results=diversify_results)
+                                         diversify_results=diversify_results, taste=taste)
         out = []
         mix: dict[str, int] = {}
         for rank, j in enumerate(order):
@@ -215,7 +273,7 @@ class CrossVerseEngine:
                 Recommendation(
                     recommendation_id=uuid.uuid4().hex[:16], item_id=str(row["item_id"]), title=str(row["title"]),
                     domain=str(row["domain"]), rank=rank + 1, score=float(scores[j]), sources=srcs,
-                    themes=list(row["themes"]), year=year, evidence=ev,
+                    themes=list(row["themes"]), year=year, evidence=ev, image=_image(row),
                 )
             )
         return EngineResult(out, self.version, (time.perf_counter() - t0) * 1000, len(cands.idx), mix, cold)
@@ -263,7 +321,7 @@ class CrossVerseEngine:
         return {
             "item_id": str(row["item_id"]), "title": str(row["title"]), "domain": str(row["domain"]),
             "themes": list(row["themes"]), "year": int(row["year"]) if row["year"] and row["year"] > 0 else None,
-            "popularity": int(self.popularity[i]),
+            "popularity": int(self.popularity[i]), "image": _image(row),
         }
 
     @property

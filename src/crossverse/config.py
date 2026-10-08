@@ -32,6 +32,9 @@ def _env_override(obj: object) -> None:
 class DataConfig:
     raw_dir: Path = PROJECT_ROOT / "data" / "raw"
     processed_dir: Path = PROJECT_ROOT / "data" / "processed"
+    # TMDB/IGDB matches from pipelines/enrich.py; used by the build when the file exists (ds5+).
+    external_metadata: Path = PROJECT_ROOT / "data" / "external" / "metadata.parquet"
+    use_external: bool = True
     # Ratings >= this are positive implicit events; <= negative_max are explicit dislikes.
     positive_threshold: float = 4.0
     negative_max: float = 2.0
@@ -75,6 +78,12 @@ class ModelConfig:
     knn_shrink: float = 10.0
     content_dim: int = 128
     copref_alpha: float = 0.5  # target-popularity normalisation exponent (see knn_shrink note)
+    # Minimum users behind a pair before it counts (v10). Fixed before seeing test results.
+    knn_min_support: int = 2
+    copref_min_support: int = 3
+    # Sentence-embedding model for the "semantic" retriever (v11); "" disables it. Needs the optional
+    # `semantic` extra (fastembed); without it training skips the retriever with a warning.
+    semantic_model: str = "BAAI/bge-small-en-v1.5"
     tt_dim: int = 64
     tt_epochs: int = 15
     tt_lr: float = 0.05
@@ -114,3 +123,18 @@ class Settings:
 
 def get_settings() -> Settings:
     return Settings()
+
+
+def load_env(path: Path | None = None) -> dict[str, str]:
+    """Read KEY=value lines from the project's .env (git-ignored; holds API keys). Values already in the
+    process environment win, so CI/containers can inject secrets without a file."""
+    path = path or PROJECT_ROOT / ".env"
+    values: dict[str, str] = {}
+    if path.exists():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                key, value = line.split("=", 1)
+                values[key.strip()] = value.strip().strip('"').strip("'")
+    values.update({k: v for k, v in os.environ.items() if k in values or k.startswith(("TMDB_", "IGDB_"))})
+    return values

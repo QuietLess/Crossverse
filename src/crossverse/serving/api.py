@@ -48,6 +48,8 @@ class RecommendRequest(BaseModel):
     explain: bool = True
     diversify: bool = True
     user_id: str | None = None
+    taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
+                         "ranker), 1 = similar story & setting among well-liked titles; in between, a blend")
 
 
 class DomainRequest(BaseModel):
@@ -55,6 +57,8 @@ class DomainRequest(BaseModel):
     disliked: list[str] = Field(default_factory=list)
     k: int = Field(10, ge=1, le=100)
     explain: bool = True
+    taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
+                         "ranker), 1 = similar story & setting among well-liked titles; in between, a blend")
 
 
 class FeedbackRequest(BaseModel):
@@ -76,6 +80,7 @@ class RecItem(BaseModel):
     themes: list[str]
     year: int | None
     evidence: dict[str, Any]
+    image: str | None = Field(None, description="cover image URL (Amazon product image), if known")
 
 
 class RecommendResponse(BaseModel):
@@ -188,14 +193,14 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
 
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
                 free_text="", exclude=None, explain=True, diversify=True,
-                ambiguous=None) -> RecommendResponse:
+                ambiguous=None, taste=0.0) -> RecommendResponse:
         key = "rec:" + hashlib.sha1(json.dumps(
-            [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify],
+            [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste],
             sort_keys=True, default=str).encode()).hexdigest()
         cached = state.cache.get(key)
         if cached:
             return RecommendResponse(**cached)
-        res: EngineResult = eng.recommend(pairs, dis, target, k, prefs, free_text, exclude, explain, diversify)
+        res: EngineResult = eng.recommend(pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste)
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
                                  resolved_profile=resolved, unresolved=unresolved,
@@ -223,7 +228,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked)
         mode = "cold_start" if not pairs and not dis else "mixed"
         return respond(eng, mode, pairs, dis, resolved, unresolved, req.target_domain, req.k, req.preferences,
-                       req.free_text, req.exclude, req.explain, req.diversify, ambiguous)
+                       req.free_text, req.exclude, req.explain, req.diversify, ambiguous, taste=req.taste)
 
     @app.post("/recommend/movie-to-game", response_model=RecommendResponse, tags=["recommend"])
     def movie_to_game(req: DomainRequest) -> RecommendResponse:
@@ -233,7 +238,8 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked movies were found",
                                       "suggestions": {u: eng.suggest(u, "movie") for u in unresolved}})
-        return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain, ambiguous=ambiguous)
+        return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain, ambiguous=ambiguous,
+                       taste=req.taste)
 
     @app.post("/recommend/game-to-movie", response_model=RecommendResponse, tags=["recommend"])
     def game_to_movie(req: DomainRequest) -> RecommendResponse:
@@ -243,7 +249,8 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked games were found",
                                       "suggestions": {u: eng.suggest(u, "game") for u in unresolved}})
-        return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain, ambiguous=ambiguous)
+        return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain, ambiguous=ambiguous,
+                       taste=req.taste)
 
     @app.get("/similar/{domain}/{item_id}", tags=["items"])
     def similar(domain: Domain, item_id: str, k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:

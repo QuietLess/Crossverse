@@ -170,6 +170,10 @@ reports/                      per-version benchmarks, significance, error analys
   Unknown titles get "did you mean" suggestions instead of silent substitutions.
 * The Docker image and `docker compose up` were not run (no virtualisation on the dev machine);
   every service in the stack was verified natively at the same versions instead.
+* The ranker learns "what Amazon buyers bought next", which with weak cross-domain signal means
+  bestsellers (Red Dead Redemption 2 → Game of Thrones). A `taste` setting (UI slider, API field)
+  blends in story/setting similarity among well-liked titles (→ Justified, Tombstone, Longmire);
+  it costs offline NDCG, measured in [docs/evaluation.md](docs/evaluation.md#serving-settings-taste-and-compilations).
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
   catalog scale.
 
@@ -178,7 +182,12 @@ reports/                      per-version benchmarks, significance, error analys
 * Hou et al., *Bridging Language and Items for Retrieval and Recommendation* (Amazon Reviews 2023),
   https://amazon-reviews-2023.github.io/ ; UCSD datasets page https://cseweb.ucsd.edu/~jmcauley/datasets.html
 * MovieLens 32M (not used for training: user ids do not align) https://grouplens.org/datasets/movielens/32m/
-* IGDB API (optional metadata enrichment) https://api-docs.igdb.com/
+* TMDB API (movie and TV metadata: overviews, genres, keywords, release years) https://www.themoviedb.org/ .
+  **This product uses the TMDB API but is not endorsed or certified by TMDB.**
+* IGDB API (game metadata, via Twitch) https://www.igdb.com/ , https://api-docs.igdb.com/
 
-Datasets are downloaded by code and never committed. Re-check each source's license before
-redistributing derived data.
+Datasets are downloaded by code and never committed; TMDB/IGDB responses are cached locally under
+`data/external/` (git-ignored) and used for non-commercial research only. Keys go in a git-ignored
+`.env` (`TMDB_TOKEN`, `IGDB_CLIENT_ID`, `IGDB_CLIENT_SECRET`); `python pipelines/enrich.py` builds
+`data/external/metadata.parquet`, which the dataset build then uses. Re-check each source's license
+before redistributing derived data.

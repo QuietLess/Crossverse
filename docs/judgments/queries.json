@@ -1,0 +1,117 @@
+{
+  "about": "Hand-judged queries: is each recommendation a good fit for someone who liked the seed? Ratings live in ratings.csv (2 = good fit, 1 = okay, 0 = bad).",
+  "queries": [
+    {
+      "id": "g2m-red-dead-redemption-2",
+      "seed_item_id": "g_e3a114150a",
+      "seed_title": "Red Dead Redemption 2",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-witcher-3-wild-hunt",
+      "seed_item_id": "g_369a6eb54c",
+      "seed_title": "Witcher 3: Wild Hunt",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-halo-3",
+      "seed_item_id": "g_b44f79eddf",
+      "seed_title": "HALO 3",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-mass-effect-2",
+      "seed_item_id": "g_930383d84f",
+      "seed_title": "Mass Effect 2",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-resident-evil-2-2019",
+      "seed_item_id": "g_7b33f5adc7",
+      "seed_title": "Resident Evil 2 (2019)",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-the-last-of-us",
+      "seed_item_id": "g_700302b6e2",
+      "seed_title": "The Last of Us",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-bioshock",
+      "seed_item_id": "g_9332ff6884",
+      "seed_title": "BioShock",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "g2m-final-fantasy-vii-1998",
+      "seed_item_id": "g_cbf4525853",
+      "seed_title": "Final Fantasy VII (1998)",
+      "seed_domain": "game",
+      "target_domain": "movie"
+    },
+    {
+      "id": "m2g-blade-runner-2049",
+      "seed_item_id": "m_0fb236ebfb",
+      "seed_title": "Blade Runner 2049",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-the-dark-knight",
+      "seed_item_id": "m_a7fc9bf885",
+      "seed_title": "The Dark Knight",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-lotr-fellowship",
+      "seed_item_id": "m_f2083d8ab8",
+      "seed_title": "The Lord of the Rings: The Fellowship of the Ring",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-alien",
+      "seed_item_id": "m_bd4538c4cf",
+      "seed_title": "Alien",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-mad-max-fury-road",
+      "seed_item_id": "m_f6485fc20e",
+      "seed_title": "Mad Max: Fury Road",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-john-wick",
+      "seed_item_id": "m_df9bedb45d",
+      "seed_title": "John Wick",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-jurassic-park",
+      "seed_item_id": "m_df7bc61e59",
+      "seed_title": "Jurassic Park",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    },
+    {
+      "id": "m2g-interstellar",
+      "seed_item_id": "m_8367a50e79",
+      "seed_title": "Interstellar",
+      "seed_domain": "movie",
+      "target_domain": "game"
+    }
+  ]
+}

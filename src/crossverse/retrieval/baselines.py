@@ -53,14 +53,19 @@ class PopularityRetriever(Retriever):
 
 
 class ItemKNNRetriever(Retriever):
-    """Item-item cosine on the joint (movie+game) positive matrix with shrinkage."""
+    """Item-item cosine on the joint (movie+game) positive matrix with shrinkage.
+
+    Pairs liked by fewer than `min_support` users are dropped: one shared user between a bestseller
+    and an item with one fan otherwise outranks dozens of shared users with a popular item.
+    """
 
     name = "item_knn"
 
-    def __init__(self, neighbors: int = 100, shrink: float = 10.0, block: int = 1000):
+    def __init__(self, neighbors: int = 100, shrink: float = 10.0, block: int = 1000, min_support: int = 1):
         self.neighbors = neighbors
         self.shrink = shrink
         self.block = block
+        self.min_support = min_support
 
     def fit(self, data: TrainData) -> ItemKNNRetriever:
         X = data.positive.tocsc().astype(np.float32)
@@ -72,7 +77,7 @@ class ItemKNNRetriever(Retriever):
         for start in range(0, n, self.block):
             stop = min(start + self.block, n)
             co = (XT[start:stop] @ X).tocoo()  # block_items x items co-occurrence counts
-            mask = co.row + start != co.col
+            mask = (co.row + start != co.col) & (co.data >= getattr(self, "min_support", 1))
             r, c, v = co.row[mask], co.col[mask], co.data[mask]
             sim = v / (sqrt_pop[r + start] * sqrt_pop[c] + self.shrink)
             blocks.append(_prune_top_k(sp.csr_matrix((sim, (r, c)), shape=(stop - start, n)), self.neighbors))
@@ -89,14 +94,16 @@ class CoPreferenceRetriever(Retriever):
 
     For bridge users (positives in both domains) count movie<->game co-likes. A target item j in
     the other domain is scored by sum_i w_i * C[i, j] / (pop_i^0.5 * pop_j^alpha), where alpha
-    normalises away pure popularity. Only cross-domain pairs are scored.
+    normalises away pure popularity. Only cross-domain pairs are scored, and only pairs co-liked by at
+    least `min_support` bridge users (a single shared fan of an obscure title is noise, not transfer).
     """
 
     name = "copref"
 
-    def __init__(self, alpha: float = 0.5, neighbors: int = 200):
+    def __init__(self, alpha: float = 0.5, neighbors: int = 200, min_support: int = 1):
         self.alpha = alpha
         self.neighbors = neighbors
+        self.min_support = min_support
 
     def fit(self, data: TrainData) -> CoPreferenceRetriever:
         X = data.positive.tocsr().astype(np.float32)
@@ -108,6 +115,8 @@ class CoPreferenceRetriever(Retriever):
         Xm, Xg = Xm[bridge], Xg[bridge]
         self.n_bridge_users_ = int(bridge.sum())
         C = (Xm.T @ Xg).tocoo()  # movies x games co-like counts
+        keep = C.data >= self.min_support
+        C = sp.coo_matrix((C.data[keep], (C.row[keep], C.col[keep])), shape=C.shape)
         pop_m = np.asarray(Xm.sum(axis=0)).ravel()
         pop_g = np.asarray(Xg.sum(axis=0)).ravel()
         n = len(dom)

@@ -13,6 +13,7 @@ import hashlib
 import json
 import logging
 import re
+import time
 from collections.abc import Iterable
 from dataclasses import asdict
 from pathlib import Path
@@ -22,7 +23,7 @@ import pandas as pd
 import requests
 
 from crossverse.config import DataConfig
-from crossverse.data import canonical
+from crossverse.data import canonical, external
 from crossverse.data.schema import validate_interactions, validate_items
 from crossverse.features.themes import item_themes
 
@@ -58,13 +59,38 @@ def download(raw_dir: Path, core: str = "0core", force: bool = False) -> list[Pa
                 continue
             log.info("downloading %s", url)
             tmp = dest.with_suffix(dest.suffix + ".part")
-            with requests.get(url, stream=True, timeout=60) as r:
-                r.raise_for_status()
-                with open(tmp, "wb") as fh:
-                    for chunk in r.iter_content(chunk_size=1 << 20):
-                        fh.write(chunk)
+            _download_resumable(url, tmp)
             tmp.replace(dest)
     return out
+
+
+def _download_resumable(url: str, tmp: Path, attempts: int = 10) -> None:
+    """Stream url into tmp, resuming from tmp's size after a dropped connection (the UCSD mirror stalls
+    every few minutes on long transfers). Gives up after `attempts` failures in a row *without progress*;
+    falls back to a full restart if the server ignores the Range header."""
+    failures = 0
+    while failures < attempts:
+        done = tmp.stat().st_size if tmp.exists() else 0
+        headers = {"Range": f"bytes={done}-"} if done else {}
+        expected = 0
+        try:
+            with requests.get(url, stream=True, timeout=60, headers=headers) as r:
+                if r.status_code == 416:  # range starts at the end: already complete
+                    return
+                r.raise_for_status()
+                resumed = r.status_code == 206
+                expected = int(r.headers.get("Content-Length", 0)) + (done if resumed else 0)
+                with open(tmp, "ab" if resumed else "wb") as fh:
+                    for chunk in r.iter_content(chunk_size=1 << 20):
+                        fh.write(chunk)
+            if not expected or tmp.stat().st_size == expected:
+                return
+        except requests.RequestException as e:
+            log.warning("%s: %s; resuming at %d MB", tmp.name, e, tmp.stat().st_size >> 20 if tmp.exists() else 0)
+        progressed = tmp.exists() and tmp.stat().st_size > done
+        failures = 0 if progressed else failures + 1
+        time.sleep(min(2 ** failures, 30))
+    raise RuntimeError(f"download of {url} made no progress in {attempts} attempts")
 
 
 # --------------------------------------------------------------------------------------------
@@ -200,6 +226,17 @@ def iter_metadata(path: Path, wanted: set[str]) -> Iterable[dict]:
             yield json.loads(line)
 
 
+def _main_image(rec: dict) -> str:
+    """URL of the product's main image (cover / box art); "" if none. Prefers the MAIN variant."""
+    images = [im for im in rec.get("images") or [] if isinstance(im, dict)]
+    images.sort(key=lambda im: im.get("variant") != "MAIN")
+    for im in images:
+        url = im.get("large") or im.get("hi_res") or im.get("thumb")
+        if isinstance(url, str) and url.startswith("https://"):
+            return url
+    return ""
+
+
 def load_metadata(raw_dir: Path, wanted: dict[str, set[str]]) -> pd.DataFrame:
     rows = []
     for domain, category in CATEGORIES.items():
@@ -237,6 +274,7 @@ def load_metadata(raw_dir: Path, wanted: dict[str, set[str]]) -> pd.DataFrame:
                     "year": _year_from_meta(rec),
                     "rating_number": rec.get("rating_number") or 0,
                     "main_category": rec.get("main_category") or "",
+                    "image": _main_image(rec),
                 }
             )
     return pd.DataFrame(rows)
@@ -269,6 +307,8 @@ def build_catalog(meta: pd.DataFrame, mapping: pd.DataFrame) -> pd.DataFrame:
                 "creator": head["creator"],
                 "year": int(years.min()) if len(years) else -1,
                 "n_products": len(g),
+                # most-reviewed product with an image: the edition people actually bought
+                "image": next((u for u in g["image"] if u), "") if "image" in g else "",
             }
         )
     catalog = pd.DataFrame(rows)
@@ -315,6 +355,21 @@ def build_dataset(cfg: DataConfig | None = None) -> dict[str, object]:
     )
     r["domain"] = r["domain"].astype(str)
 
+    # External ids (TMDB/IGDB): editions that are the same work merge into the most-liked item, so
+    # existing item ids (and ratings keyed by them) survive.
+    matches = external.load_matches(cfg.external_metadata) if cfg.use_external else None
+    if matches is not None:
+        pop0 = r[r["rating"] >= cfg.positive_threshold].groupby("item_id").size().to_dict()
+        remap = external.merge_map(matches, pop0)
+        if remap:
+            mapping["canonical_item_id"] = mapping["canonical_item_id"].replace(remap)
+            r["item_id"] = r["item_id"].replace(remap)
+            r = (r.groupby(["user_id", "item_id"], observed=True)
+                 .agg(domain=("domain", "first"), rating=("rating", "max"), timestamp=("timestamp", "min"))
+                 .reset_index())
+        report["merged_by_external_id"] = len(remap)
+        (out_dir / "item_remap.json").write_text(json.dumps(remap, indent=1))
+
     # Iterative pruning: items need enough positives, users need enough history.
     for _ in range(3):
         pos = r[r["rating"] >= cfg.positive_threshold]
@@ -327,6 +382,10 @@ def build_dataset(cfg: DataConfig | None = None) -> dict[str, object]:
 
     catalog = build_catalog(meta, mapping)
     catalog = catalog[catalog["item_id"].isin(r["item_id"].unique())].reset_index(drop=True)
+    if matches is not None:
+        catalog = external.enrich_catalog(catalog, matches)
+        report["items_with_external_metadata"] = {
+            d: float((g["ext_id"] >= 0).mean()) for d, g in catalog.groupby("domain")}
     pop = r[r["rating"] >= cfg.positive_threshold].groupby("item_id").size()
     catalog["popularity"] = catalog["item_id"].map(pop).fillna(0).astype(int)
     stats = r.groupby("item_id")["rating"].agg(["mean", "count"])

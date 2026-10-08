@@ -28,6 +28,7 @@ dependencies = [
 web = ["streamlit>=1.30"]
 storage = ["psycopg[binary]>=3.1", "redis>=5.0"]
 tracking = ["mlflow>=2.10"]
+semantic = ["fastembed>=0.4"]  # sentence embeddings on CPU (ONNX runtime, no PyTorch)
 dev = ["pytest>=8", "httpx>=0.26", "ruff>=0.4", "mypy>=1.8"]
 
 [project.scripts]

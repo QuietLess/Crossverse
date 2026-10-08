@@ -9,6 +9,7 @@ import numpy as np
 from crossverse.features.themes import THEMES, extract_themes
 from crossverse.retrieval.base import Catalog, History, Retriever, top_k
 from crossverse.retrieval.content import ContentRetriever
+from crossverse.retrieval.semantic import SemanticRetriever
 
 
 @dataclass
@@ -32,8 +33,8 @@ class CandidateGenerator:
         out = {}
         has_history = len(history) > 0
         for name, r in self.retrievers.items():
-            if name == "content" and not has_history and (preferences or free_text):
-                assert isinstance(r, ContentRetriever)
+            if name in ("content", "semantic") and not has_history and (preferences or free_text):
+                assert isinstance(r, ContentRetriever | SemanticRetriever)
                 out[name] = r.score_query(free_text, preferences)
             elif not has_history and name != "popularity":
                 out[name] = np.zeros(len(self.catalog), dtype=np.float32)
@@ -46,6 +47,11 @@ class CandidateGenerator:
             out["popularity"] = out["popularity"] + 0.5 * match
         return out
 
+    def similarity_source(self) -> str:
+        """Retriever that measures "similar story & setting" for taste mode: sentence embeddings when
+        the model has them (v11+), TF-IDF content otherwise."""
+        return "semantic" if "semantic" in self.retrievers else "content"
+
     def theme_match(self, preferences: list[str] | None, free_text: str = "") -> np.ndarray:
         """Number of requested themes each catalog item carries."""
         content = self.retrievers["content"]
@@ -57,7 +63,11 @@ class CandidateGenerator:
         return (content.theme_matrix_[:, cols] > 0).sum(axis=1).astype(np.float32)
 
     def generate(self, history: History, target_domain: str | None, exclude: np.ndarray | None = None,
-                 preferences: list[str] | None = None, free_text: str = "") -> CandidateSet:
+                 preferences: list[str] | None = None, free_text: str = "",
+                 quality: np.ndarray | None = None) -> CandidateSet:
+        """`quality` (bool per catalog item): also nominate the most content-similar items among these.
+        Raw content similarity favours obscure box sets with matching keywords; this adds the best
+        similar titles that enough people liked."""
         mask = self.catalog.mask(target_domain)
         full = self.all_scores(history, preferences, free_text)
         nominated: dict[int, list[str]] = {}
@@ -67,6 +77,11 @@ class CandidateGenerator:
             n = self.per_source if name != "popularity" else self.per_source // 2
             for i in top_k(s, n, mask=mask, exclude=exclude):
                 nominated.setdefault(int(i), []).append(name)
+        sim = self.similarity_source()
+        if quality is not None and sim in full:
+            for i in top_k(full[sim], self.per_source, mask=mask & quality, exclude=exclude):
+                if sim not in nominated.setdefault(int(i), []):
+                    nominated[int(i)].append(sim)
         if not nominated:  # nothing at all (empty history, no preferences): popularity fallback
             for i in top_k(full["popularity"], self.per_source, mask=mask, exclude=exclude):
                 nominated.setdefault(int(i), []).append("popularity")

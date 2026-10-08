@@ -82,3 +82,33 @@ def test_als_cg_solver_matches_exact(fixture_data):
     assert np.corrcoef(a, b)[0, 1] > 0.98
     top_a, top_b = set(top_k(a, 20).tolist()), set(top_k(b, 20).tolist())
     assert len(top_a & top_b) >= 15
+
+
+def _tiny_world():
+    """Fans of game g_x: 4 also like the bestseller m_hit, 1 likes m_rare (which has no other fan)."""
+    import pandas as pd
+
+    items = pd.DataFrame({"item_id": ["g_x", "g_y", "m_hit", "m_rare"], "domain": ["game", "game", "movie", "movie"],
+                          "title": ["X", "Y", "Hit", "Rare"], "text": "", "themes": [[]] * 4, "genres": [[]] * 4,
+                          "year": 2000})
+    rows = [(f"u{u}", "g_x") for u in range(5)] + [(f"u{u}", "m_hit") for u in range(4)] + [("u4", "m_rare")]
+    # m_hit is a bestseller among bridge users (they also play g_y), which the popularity normalisation divides out
+    rows += [(f"v{u}", "m_hit") for u in range(20)] + [(f"v{u}", "g_y") for u in range(20)]
+    inter = pd.DataFrame(rows, columns=["user_id", "item_id"]).assign(rating=5.0, timestamp=range(len(rows)))
+    inter["domain"] = inter["item_id"].str[0].map({"g": "game", "m": "movie"})
+    catalog = Catalog(items)
+    return catalog, TrainData.build(catalog, inter)
+
+
+def test_min_support_drops_single_fan_pairs():
+    catalog, data = _tiny_world()
+    h = History(np.array([catalog.index["g_x"]]), np.array([1.0]))
+    rare, hit = catalog.index["m_rare"], catalog.index["m_hit"]
+
+    noisy = CoPreferenceRetriever(min_support=1).fit(data).score(h)
+    assert noisy[rare] > noisy[hit]  # the failure mode: one shared fan of an obscure title wins
+    robust = CoPreferenceRetriever(min_support=3).fit(data).score(h)
+    assert robust[rare] == 0 and robust[hit] > 0
+
+    knn = ItemKNNRetriever(min_support=2).fit(data).score(h)
+    assert knn[rare] == 0 and knn[hit] > 0

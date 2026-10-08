@@ -110,3 +110,24 @@ def test_movies_ignore_metadata_year():
     )
     out = canonicalize(products)["canonical_item_id"]
     assert out.iloc[0] == out.iloc[1]
+
+
+@pytest.mark.parametrize("a,b,domain", [
+    ("Big Bang Theory, The: The Complete Series", "The Big Bang Theory: The Complete Second Season", "movie"),
+    ("MARTIAN, THE", "The Martian 4K Ultra-HD", "movie"),
+    ("Jurassic Park 25th Anniversary Collection", "Jurassic Park", "movie"),
+    ("Red Dead Redemption: Game of the Year Edition - Xbox One and Xbox 360", "Red Dead Redemption", "game"),
+    ("Far Cry 4 Ubisoft Connect", "Far Cry 4", "game"),
+    ("Cowboy Bebop, Vol. 1", "Cowboy Bebop, Vol. 5", "movie"),  # TV volumes are one show
+])
+def test_editions_share_a_key(a, b, domain):
+    assert normalize_title(a, domain) == normalize_title(b, domain)
+
+
+@pytest.mark.parametrize("a,b", [
+    ("Kill Bill, Vol. 1", "Kill Bill: Volume 2"),
+    ("Guardians of the Galaxy", "Guardians of the Galaxy Vol. 2 (Bonus Content)"),
+])
+def test_film_volumes_are_different_films(a, b):
+    assert normalize_title(a, "movie") != normalize_title(b, "movie")
+    assert normalize_title("Kill Bill Vol. 1 [Blu-ray]", "movie") == normalize_title("Kill Bill: Volume One", "movie")

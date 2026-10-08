@@ -77,12 +77,71 @@ statistical tie with popularity (−1%, n.s.).
 | v5 | ds2 | + routed cross-domain specialist ranker, 2× ranker queries | cross-domain 0.0287 vs 0.0309: the specialist early-stops after ~11 trees → **blocked by gate** |
 | v6 | ds2 | + tuned retriever knobs (as in v3) | cross-domain 0.0264 vs 0.0309 → **blocked by gate** |
 | **v7** | ds3 | v4 recipe after removing misfiled DVDs from the game catalog | all behavioural tasks significantly above popularity; cold start ties; **production** |
+| v9 | ds4 | v7 recipe on ds4: edition grouping fixes, theme-tagging fixes, cover images | within-domain/mixed −7–10% and games→movies +7% in aggregate, but only ~7% of test users overlap with v7; on shared users no task differs significantly. Movies→games no longer significant (+9%); cold start −42% vs popularity (significant). **Not promoted** (candidate) |
+| v9a | ds4′ | ablation: v9 with the old theme rules, identical test users | within noise of v9 on every task (cold start −49%); the theme rules are neutral, the cold-start drop comes with ds4 |
+| v10 | ds4 | v9 + minimum support for co-like pairs (kNN ≥ 2 users, co-preference ≥ 3 bridge users) | identical test users as v9: no task differs significantly (all within ±0.0022). The retrievers themselves improve a lot: co-preference alone 10–20× on movies→games / games→movies (0.0018 → 0.0183, 0.0008 → 0.0159), kNN 2–4× cross-domain and +6–7% within-domain; the ranker had already learned to discount the noisy pairs. Candidate |
+| v11 | ds4 | v10 + semantic retriever (sentence embeddings, bge-small) | identical test users as v10: no task differs significantly (−0.0024 … +0.0016). On the judged set it is the first version where high taste helps: 50% good / 27.5% bad in the top 5 at taste 0.8 (v10 at 0.5: 35% / 36%). Candidate |
+| v12 | ds5 | v11 recipe on ds5: TMDB/IGDB overviews, genres, keywords and release years for 67% of movie and 72% of game items (~80% of interactions); 369 editions merged by external id | different test users (catalog changed); on shared users no task differs significantly. Lift over popularity: within-movie +504% (v11 +367%), mixed +688% (+438%), cold start −34% (−47%), games→movies +25% (+37%). Judged set at taste 0.8: 59% good / 15% bad (v11: 50% / 27.5%). Candidate |
 
 Each candidate (v4–v6) was fixed before its test results were seen, so the test set was not used
 for tuning. v2–v7 were all evaluated with the final serving code (eligibility filter, cold-start
 tiers). v1's report predates those rules and is kept for history only. Models trained on different
 datasets are never compared by the gate. A dataset migration is promoted explicitly
 (`publish.py --force`) after the new baseline's own benchmark has been reviewed.
+
+## Serving settings: taste and compilations
+
+Measured on v10 with `scripts/serving_settings_benchmark.py` (same 17,010 test users for every
+setting; per-user rows in `reports/v10/serving_settings_cases.csv.gz`). "Shares a theme" is the
+share of recommendations carrying a specific (non-generic) theme of the user's history: it
+describes how on-topic the list is, not whether it is good.
+
+| task | NDCG@10 before | no compilations | taste 0.3 | taste 0.5 | taste 1.0 | shares a theme: before → taste 0.5 |
+|---|---:|---:|---:|---:|---:|---|
+| games → movies | 0.0279 | 0.0270 | 0.0214 | 0.0183 | 0.0066 | 46% → 74% |
+| movies → games | 0.0344 | 0.0344 | 0.0234 | 0.0181 | 0.0055 | 54% → 78% |
+| within movies | 0.0431 | 0.0418 | 0.0255 | 0.0202 | 0.0084 | 70% → 79% |
+| within games | 0.0579 | 0.0579 | 0.0406 | 0.0353 | 0.0175 | 71% → 88% |
+| mixed | 0.0344 | 0.0336 | 0.0238 | 0.0201 | 0.0086 | 73% → 85% |
+
+* **Dropping movie compilations is nearly free**: −0.0013 NDCG at most, significant only on cold
+  start (−0.0005). It is on by default.
+* **Taste trades purchase prediction for topicality.** NDCG measures "will this user buy it on
+  Amazon", which rewards bestsellers; taste 0.5 costs 35–55% of it and makes 74–88% of the list
+  share a specific theme. Popularity of the picks barely moves (the ≥ 20-fans quality floor), and
+  at 1.0 keyword matches take over ("River Monsters" for The Witcher 3). The API default stays 0,
+  so every benchmark number in this document is the plain ranker; the demo UI defaults to 0.5.
+
+## Judged evaluation
+
+The offline benchmark asks "will this Amazon user buy it". The judged set asks "does it fit someone
+who liked the seed": 16 seeds (8 games → movies, 8 movies → games), top 5 per setting, rated 2 / 1 / 0
+(see `docs/judgments/`). Ratings come from the owner (`you`, 21 items) and an LLM judge (`claude`,
+all pooled items, blind, rules fixed in `RUBRIC.md` before rating). Agreement on shared items: 62%
+identical, 90% within one step; the owner is stricter on same-genre-different-setting picks. Numbers
+below use the owner's rating wherever given, otherwise Claude's (`scripts/judged_eval.py`).
+
+| version | taste | good in top 5 | bad in top 5 |
+|---|---:|---:|---:|
+| v10 | 0 | 12.5% | 61% |
+| v10 | 0.5 (old UI default) | 35% | 36% |
+| v10 | 1.0 | 26% | 48% |
+| v11 | 0 | 16% | 57.5% |
+| v11 | 0.5 | 41% | 36% |
+| v11 | 0.8 | 50% | 27.5% |
+| v11 | 1.0 | 49% | 31% |
+| v12 | 0 | 16% | 62.5% |
+| v12 | 0.5 | 44% | 21% |
+| **v12** | **0.8 (UI default)** | **59%** | **15%** |
+| v12 | 1.0 | 55% | 16% |
+
+With TF-IDF similarity (v10) high taste drifts into keyword matches ("River Monsters" for The
+Witcher 3); sentence embeddings (v11) keep improving up to 0.8–0.9. External metadata (v12) mostly fixes seeds the
+sentence model misread from Amazon product copy (Mass Effect 2 → Battlestar Galactica instead of Iron Man 2).
+Caveats: 16 seeds, so ±1 item
+moves a cell by ~1 point; most ratings are the LLM's; and v11 trades variety for precision on
+franchises (Transformers → five Transformers games) and misreads some seeds (BioShock → Resident
+Evil, Pacific Rim instead of v10's V for Vendetta, Children of Men).
 
 ## Qualitative analysis
 
@@ -97,3 +156,8 @@ liked inputs, the top 10 recommendations (✅ = liked later), and what they actu
   Lifts are reported against it rather than in isolation.
 * Canonicalisation merges formats and seasons but not every edition or subtitle variant (e.g.
   "Witcher 3: Wild Hunt" vs. "The Witcher 3 GOTY"). See `docs/data.md`.
+* Changing the catalog (ds3 → ds4) reshuffles which users are sampled for the test tasks, so
+  aggregate numbers across datasets are different exams. Compare on shared users
+  (`reports/<v>/benchmark_cases.csv.gz`) or on a controlled ablation instead.
+* The cold-start task derives each user's stated preferences from the first three themes of their
+  liked items, so changing the theme rules also changes the test questions.
