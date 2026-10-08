@@ -38,3 +38,19 @@ def test_real_games_are_not_blocked(title):
 ])
 def test_display_title_budget_lines_and_gift_sets(title, domain, expected):
     assert display_title(title, domain) == expected
+
+
+def test_book_signals():
+    from crossverse.serving.engine import _BOOK_REVIEW, _GUIDE_TITLE
+
+    assert _BOOK_REVIEW.search("Still Foolin' 'Em From Publishers Weekly Avoiding the trappings of memoirs")
+    assert _BOOK_REVIEW.search("Starred Review. Kirkus Reviews calls it moving")
+    assert not _BOOK_REVIEW.search("Persona 5. Includes a hardcover art book and a New York Times bestselling author")
+    assert _GUIDE_TITLE.search("Two Worlds II Official Strategy Guide") and not _GUIDE_TITLE.search("Guide to the Galaxy")
+
+
+def test_reasons_never_name_internal_retrievers():
+    from crossverse.explain.evidence import SOURCE_REASONS
+
+    internal = ("semantic", "two_tower", "als", "copref", "item_knn", "content", "popularity")
+    assert all(not any(w in text for w in internal) for text in SOURCE_REASONS.values())

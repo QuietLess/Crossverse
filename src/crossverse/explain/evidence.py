@@ -25,7 +25,20 @@ SOURCE_LABELS = {
     "item_knn": "people who liked the same titles",
     "copref": "cross-domain co-preference",
     "content": "similar themes and description",
+    "semantic": "similar story and themes",
     "popularity": "widely liked",
+}
+# Fallback reasons in plain language (no retriever names in user-facing text).
+SOURCE_REASONS = {
+    "semantic": "its story and themes are close to what you picked",
+    "content": "its description and themes are close to what you picked",
+    "two_tower": "fans with a taste profile like yours tend to love it",
+    "als": "people with tastes like yours liked it",
+    "als_movie": "people with tastes like yours liked it",
+    "als_game": "people with tastes like yours liked it",
+    "item_knn": "people who liked your titles also liked it",
+    "copref": "fans of your titles also liked it",
+    "popularity": "it is widely loved",
 }
 
 
@@ -132,9 +145,9 @@ class Explainer:
             parts.append("it shares your taste for " + ", ".join(specific[:3]))
         elif preferences:
             parts.append("it matches the preferences you picked")
-        if not parts:
-            labels = [SOURCE_LABELS.get(s, s) for s in ev["candidate_sources"][:2]]
-            parts.append("it was surfaced by " + " and ".join(labels))
+        if not parts:  # no single strong signal: say in plain words which kind of evidence found it
+            reasons = list(dict.fromkeys(SOURCE_REASONS[s] for s in ev["candidate_sources"] if s in SOURCE_REASONS))
+            parts.append(" and ".join(reasons[:2]) if reasons else "it fits the overall mix of what you picked")
         text = "Recommended because " + "; ".join(parts) + "."
         if ev["disliked_theme_overlap"]:
             text += " Note: it overlaps with themes you disliked (" + ", ".join(ev["disliked_theme_overlap"]) + ")."

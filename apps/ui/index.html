@@ -4,57 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>CrossVerse</title>
-  <meta name="description" content="If you liked this movie, what game should you play next, and vice versa?">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%237c5cff'/%3E%3Cpath d='M9 16a7 7 0 0 1 12-5M23 16a7 7 0 0 1-12 5' stroke='white' stroke-width='3' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+  <meta name="description" content="Loved a movie? Find the game to play next, and the other way round.">
+  <meta name="theme-color" content="#07080d">
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <meta property="og:title" content="CrossVerse: movies ⇄ games, by taste">
+  <meta property="og:description" content="Loved a movie? Find the game to play next, and the other way round.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
   <link rel="stylesheet" href="style.css">
   <script type="module" src="app.js"></script>
 </head>
 <body>
+  <div class="aurora" aria-hidden="true"><span class="blob film"></span><span class="blob game"></span><span class="blob core"></span><span class="grid-lines"></span></div>
+
   <header class="topbar">
     <a class="brand" href="./" aria-label="CrossVerse home">
-      <span class="brand-mark" aria-hidden="true"></span>
-      <span class="brand-name">CrossVerse</span>
+      <img class="brand-logo" src="logo.svg" alt="" width="34" height="34">
+      <span class="wordmark"><span>Cross</span><span class="verse">Verse</span></span>
     </a>
-    <span class="tagline">Movies ↔ games, by taste</span>
     <div class="topbar-right">
+      <button class="chip-btn" id="surprise" type="button" title="Start from a random favourite">🎲 Surprise me</button>
+      <button class="chip-btn" id="share" type="button" title="Copy a link to these results">🔗 Share</button>
       <span class="badge" id="model-badge" title="Model version and last response time">connecting…</span>
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle light / dark theme">◐</button>
     </div>
   </header>
 
   <main>
-    <section class="panel taste" aria-labelledby="taste-title">
-      <h1 id="taste-title">What do you love?</h1>
-      <p class="hint">Add movies, shows or games. Results update as you go.</p>
+    <section class="hero" aria-labelledby="hero-title">
+      <h1 id="hero-title">Find your next <span class="shine">obsession</span>.</h1>
+      <p class="sub">Tell us what you love. We cross it over: <b class="film-text">movies</b> ⇄ <b class="game-text">games</b>.</p>
 
-      <div class="search" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="search-results">
-        <span class="search-icon" aria-hidden="true">⌕</span>
-        <input id="search" type="search" autocomplete="off" spellcheck="false"
-               placeholder="Search a title… e.g. Red Dead Redemption 2, Blade Runner"
-               aria-autocomplete="list" aria-controls="search-results">
-        <kbd class="kbd" aria-hidden="true">/</kbd>
-        <ul id="search-results" class="dropdown" role="listbox" hidden></ul>
+      <div class="direction" role="radiogroup" aria-label="What to recommend">
+        <button type="button" role="radio" data-to="game"><span class="from">🎬</span><span class="arrow">→</span><span class="to">🎮</span> Games</button>
+        <button type="button" class="swap" id="swap" aria-label="Swap direction" title="Swap direction">⇄</button>
+        <button type="button" role="radio" data-to="movie"><span class="from">🎮</span><span class="arrow">→</span><span class="to">🎬</span> Movies &amp; TV</button>
+        <button type="button" role="radio" data-to="both" class="both">✦ Both</button>
       </div>
 
-      <ul id="picks" class="picks" aria-label="Your titles"></ul>
-
-      <div id="moods" class="moods" hidden>
-        <p class="hint">Nothing added yet? Pick a few moods instead:</p>
-        <div id="mood-chips" class="mood-chips"></div>
-        <input id="free-text" class="free-text" type="text" placeholder="…or describe it: slow-burn sci-fi about memory">
-      </div>
-
-      <div class="controls">
-        <div class="segmented" role="radiogroup" aria-label="Recommend">
-          <button type="button" role="radio" data-to="game">🎮 Games</button>
-          <button type="button" role="radio" data-to="movie">🎬 Movies &amp; TV</button>
-          <button type="button" role="radio" data-to="both">✦ Both</button>
+      <div class="panel">
+        <div class="search" role="combobox" aria-expanded="false" aria-haspopup="listbox" aria-owns="search-results">
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input id="search" type="search" autocomplete="off" spellcheck="false"
+                 placeholder="Add a movie, show or game you love…"
+                 aria-autocomplete="list" aria-controls="search-results">
+          <kbd class="kbd" aria-hidden="true">/</kbd>
+          <ul id="search-results" class="dropdown" role="listbox" hidden></ul>
         </div>
-        <label class="style-slider">
-          <span>Crowd favourites</span>
-          <input id="taste" type="range" min="0" max="1" step="0.1" aria-label="Recommendation style">
-          <span>Similar story</span>
-        </label>
+
+        <ul id="picks" class="picks" aria-label="Your titles"></ul>
+
+        <div id="moods" class="moods" hidden>
+          <p class="hint">No titles yet? Pick a vibe instead:</p>
+          <div id="mood-chips" class="mood-chips"></div>
+          <input id="free-text" class="free-text" type="text" placeholder="…or describe it: slow-burn sci-fi about memory">
+        </div>
+
+        <div class="vibe">
+          <div class="vibe-head">
+            <span>Vibe</span>
+            <strong id="vibe-label">🧬 Same DNA</strong>
+            <span id="vibe-hint" class="hint">closest story, setting and themes</span>
+          </div>
+          <input id="taste" type="range" min="0" max="1" step="0.1" aria-label="Recommendation vibe">
+          <div class="vibe-scale" aria-hidden="true"><span>🔥 Crowd favourites</span><span>⚖️ Balanced</span><span>🧬 Same DNA</span></div>
+        </div>
       </div>
     </section>
 
@@ -64,6 +79,7 @@
         <span id="results-meta" class="meta"></span>
       </div>
       <div id="notice" class="notice" hidden></div>
+      <div id="featured"></div>
       <div id="grid" class="grid"></div>
     </section>
   </main>
@@ -76,9 +92,10 @@
   <div id="toast" class="toast" role="status" hidden></div>
 
   <footer class="foot">
-    Recommendations from Amazon Reviews 2023 behaviour, with metadata from TMDB and IGDB.
-    This product uses the TMDB API but is not endorsed or certified by TMDB.
-    <a href="../docs" target="_blank" rel="noopener">API docs</a>
+    <img src="logo.svg" alt="" width="18" height="18">
+    <span>CrossVerse · recommendations from Amazon Reviews 2023 behaviour, metadata from TMDB and IGDB.
+      This product uses the TMDB API but is not endorsed or certified by TMDB.</span>
+    <a href="../docs" target="_blank" rel="noopener">API</a>
   </footer>
 </body>
 </html>

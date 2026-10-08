@@ -84,6 +84,10 @@ _DOMAIN_PREFIX = re.compile(r"^\s*(movie|film|tv|show|game)\s*:\s*", re.I)
 _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "movie", "game": "game"}
 
 
+_BOOK_REVIEW = re.compile(
+    r"\b(?:publishers\s+weekly|booklist|kirkus(?:\s+reviews)?|school\s+library\s+journal|library\s+journal)\b", re.I)
+_GUIDE_TITLE = re.compile(r"\b(?:strategy|official)\s+(?:nintendo\s+)?guide\b|\bguide\s+final\s+fantasy\b", re.I)
+
 TASTE_MIN_FANS = 20  # taste mode only promotes titles at least this many training users liked
 
 _COMPILATION = re.compile(
@@ -163,6 +167,14 @@ class CrossVerseEngine:
         if "_ineligible" not in self.__dict__:
             # "Fallout 4 Game + Season Pass" is the game plus an extra: keep it.
             hit = np.array([bool(_NOT_RECOMMENDABLE.search(t)) and " + " not in t for t in self._titles])
+            # Books Amazon filed under games ("Still Foolin' 'Em", "Wonder"): no IGDB match and an editorial
+            # review from a book trade journal, or a strategy guide.
+            items = self.catalog.items
+            if "ext_id" in items and "text" in items:
+                unmatched = items["ext_id"].to_numpy() < 0
+                bookish = items["text"].fillna("").str.contains(_BOOK_REVIEW).to_numpy()
+                guide = items["title"].str.contains(_GUIDE_TITLE).to_numpy()
+                hit |= unmatched & (bookish | guide)
             self.__dict__["_ineligible"] = np.flatnonzero(hit & (self.catalog.domain == 1))
         return self.__dict__["_ineligible"]
 
@@ -429,7 +441,7 @@ class CrossVerseEngine:
         self._titles = items["title"].to_numpy()
         self._norm_titles = np.array([_norm(t) for t in self._titles])
         self.explainer.titles = self._titles
-        for lazy in ("_prefix", "_match"):
+        for lazy in ("_prefix", "_match", "_ineligible", "_compilations"):  # rebuilt with current rules
             self.__dict__.pop(lazy, None)
 
     @staticmethod
