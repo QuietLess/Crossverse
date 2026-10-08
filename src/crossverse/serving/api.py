@@ -5,8 +5,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
@@ -27,7 +29,9 @@ from crossverse.serving.storage import SQLStore, make_cache
 log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
-UI_DIR = PROJECT_ROOT / "apps" / "ui"
+# Web UI files. The default fits a source checkout; installed (non-editable) packages, as in the container
+# images, set CROSSVERSE_UI_DIR because PROJECT_ROOT then points into site-packages.
+UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -123,6 +127,12 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
     engine.search("warmup")  # build the title prefix index before the first request
+    # Build the other lazy pieces too (eligibility masks, the sentence model for mood queries) so the
+    # first visitor of a fresh container (Cloud Run cold start) doesn't wait seconds for them.
+    engine.compilations()
+    if len(engine.catalog):
+        engine.recommend([(str(engine.catalog.item_ids[0]), 5.0)], k=3, explain=False, taste=0.5)
+        engine.recommend([], k=3, explain=False, free_text="warm up")
     order = engine.popularity.argsort().argsort()
     state.pop_pct = order / max(len(order) - 1, 1)
     state.quality = M.QualityTracker(len(engine.catalog))

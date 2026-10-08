@@ -20,6 +20,6 @@ COPY --chown=user start.py ./
 RUN mkdir -p /app/artifacts/models && chown -R user /app
 
 USER user
-ENV HOME=/home/user CROSSVERSE_ARTIFACTS_DIR=/app/artifacts
+ENV HOME=/home/user CROSSVERSE_ARTIFACTS_DIR=/app/artifacts CROSSVERSE_UI_DIR=/app/apps/ui
 EXPOSE 7860
 CMD ["python", "start.py"]
