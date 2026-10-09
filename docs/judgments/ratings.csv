@@ -508,3 +508,10 @@ m2g-blade-runner-2049,g_814c68876a,CTR: Crash Team Racing (1999),game,0,claude,k
 m2g-lotr-fellowship,g_07da36da46,Max Payne (2002),game,0,claude,noir crime shooter,2026-10-08T11:11:50+00:00
 m2g-jurassic-park,g_8b4de50371,Mario Kart 8 Deluxe (European Version),game,0,claude,kart racer,2026-10-08T11:11:50+00:00
 m2g-jurassic-park,g_ce870425a3,Super Mario Odyssey,game,0,claude,family platformer,2026-10-08T11:11:50+00:00
+g2m-witcher-3-wild-hunt,m_9914a942ac,A Discovery of Witches,movie,1,claude,"fantasy with witches and monsters, but romance-led and lighter",2026-10-09T14:32:39+00:00
+g2m-mass-effect-2,m_14e516d999,Marvel's Avengers: Endgame,movie,1,claude,"team-up space epic, broadly liked; different tone",2026-10-09T14:32:39+00:00
+g2m-the-last-of-us,m_157e44055c,Ready Player One (2018),movie,0,claude,only 'video games' in common; light adventure vs survival drama,2026-10-09T14:32:39+00:00
+g2m-bioshock,m_76125192c1,Resident Evil: Retribution,movie,1,claude,"corporate experiments and horror, but brainless action tone",2026-10-09T14:32:39+00:00
+m2g-blade-runner-2049,g_e2fc28a733,Deus Ex Human Revolution,game,2,claude,"cyberpunk, augmentation, what makes us human",2026-10-09T14:32:39+00:00
+m2g-alien,g_10efad9add,Dead Space 2,game,2,claude,sci-fi horror in space,2026-10-09T14:32:39+00:00
+m2g-jurassic-park,g_50762d3a4f,Back to the Future: The Game,game,1,claude,"same Amblin adventure tone, different genre",2026-10-09T14:32:39+00:00
