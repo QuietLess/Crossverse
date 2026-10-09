@@ -262,6 +262,7 @@ let recCtl, lastBody = "";
 
 function skeletons(n = 12) {
   $("#featured").replaceChildren();
+  renderUniverse([]);
   $("#grid").replaceChildren(...Array.from({ length: n }, () =>
     h("div", { class: "skeleton", "aria-hidden": "true" }, h("div", { class: "poster" }), h("div", { class: "line" }), h("div", { class: "line", style: "width:60%" }))));
 }
@@ -271,6 +272,7 @@ async function emptyState() {
   $("#results-meta").textContent = "";
   $("#notice").hidden = true;
   $("#featured").replaceChildren();
+  renderUniverse([]);
   const starters = h("div", { class: "starters" });
   $("#grid").replaceChildren(h("div", { class: "empty-state" },
     h("strong", {}, "Start with something you love"),
@@ -326,14 +328,41 @@ function renderResults(res, ms) {
   if (res.cold_start) notes.push("No titles yet: picking by vibe and what people love most.");
   $("#notice").hidden = !notes.length;
   $("#notice").textContent = notes.join(" · ");
-  if (!res.items.length) {
+  renderUniverse(res.same_universe || []);
+  if (!res.items.length && !res.same_universe?.length) {
     $("#featured").replaceChildren();
     $("#grid").replaceChildren(h("div", { class: "empty-state" }, h("strong", {}, "Nothing to show"), "Try adding another title."));
     return;
   }
-  const [top, ...rest] = res.items;
-  $("#featured").replaceChildren(feature(top));
+  // an adaptation already shown in the same-universe row is not repeated in the ranked list
+  const shown = new Set((res.same_universe || []).map((x) => x.item_id));
+  const [top, ...rest] = res.items.filter((x) => !shown.has(x.item_id));
+  $("#featured").replaceChildren(...(top ? [feature(top)] : []));
   $("#grid").replaceChildren(...rest.map((it, n) => card(it, n + 2)));
+}
+
+/** Adaptations and tie-ins of the picked titles (The Last of Us game -> the HBO series). Not ranked by taste. */
+function renderUniverse(items) {
+  const box = $("#universe");
+  box.hidden = !items.length;
+  if (!items.length) return box.replaceChildren();
+  const vias = [...new Set(items.map((x) => x.via))];
+  box.replaceChildren(
+    h("div", { class: "universe-head" },
+      h("h3", { id: "universe-title" }, "🔗 Same universe"),
+      h("span", { class: "meta" }, `${describe(items)} from the world of ${vias.length === 1 ? vias[0] : "your picks"}`)),
+    h("div", { class: "row" }, items.map((it) => {
+      const el = card(it, null, true);
+      if (vias.length > 1) el.querySelector(".card-body").append(h("div", { class: "via" }, `from ${it.via}`));
+      return el;
+    })));
+}
+
+function describe(items) {
+  const kinds = new Set(items.map(kindOf));
+  const words = [kinds.has("movie") && "films", kinds.has("tv") && "series", kinds.has("game") && "games"].filter(Boolean);
+  const text = words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words.at(-1)}` : words[0];
+  return text[0].toUpperCase() + text.slice(1);
 }
 
 function feedback(item, event, btn) {

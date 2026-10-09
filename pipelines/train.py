@@ -15,6 +15,7 @@ import pandas as pd
 
 from crossverse.config import get_settings
 from crossverse.monitoring.registry import ModelRegistry, dataset_fingerprint, new_version
+from crossverse.serving import universe
 from crossverse.training import train
 
 
@@ -40,6 +41,7 @@ def main(argv: list[str] | None = None) -> str:
     registry = ModelRegistry(s.serving.artifacts_dir)
     d = registry.model_dir(version)
     d.mkdir(parents=True, exist_ok=True)
+    report["same_universe_items"] = universe.attach(engine, s.data.external_metadata)  # adaptations, tie-ins
     engine.save(d / "engine.pkl")
     with open(d / "split.pkl", "wb") as fh:
         pickle.dump(split, fh, protocol=pickle.HIGHEST_PROTOCOL)

@@ -74,6 +74,7 @@ chance, and *Kingsglaive* ↔ *Final Fantasy XV* 50×.
 | Ranker (§5.5) | LightGBM LambdaRank on ~480-candidate unions, with 45 features: per-retriever score/rank/z, cross-domain, semantic, theme, quality and context. Trained on validation tasks. |
 | Post-ranking | Eligibility filter (no memberships, gift cards, DLC, amiibo/cases), MMR diversity, creator repetition penalty, domain quotas for unified lists, explicit-intent tiers for cold start |
 | Evaluation (§6) | Chronological per-user split **plus cross-domain holdout users whose target domain is entirely hidden from training**; Recall/NDCG/HitRate/MAP, coverage, diversity, novelty, popularity bias; segments; paired-bootstrap CIs; 100-case error analysis. Parallel (≈2.5 min). [docs/evaluation.md](docs/evaluation.md) |
+| Same universe | Adaptations and tie-ins next to the ranked list (*The Last of Us* game → the HBO series, *Super Mario Bros.* film → the Mario games), from TMDB collections / "based on video game" and IGDB franchises / tie-in tags; never mixed into the ranking. `src/crossverse/serving/universe.py`; add to an existing model with `python scripts/build_universe.py` |
 | Explainability (§7) | Deterministic evidence objects + template verbalisation that only states what clears a threshold |
 | Serving (§8–9) | FastAPI: `/recommend`, `/recommend/movie-to-game`, `/recommend/game-to-movie`, `/similar/{domain}/{id}`, `/feedback`, `/explain/{id}`, `/health`, `/metrics`, `/items/search`, `/admin/stats`; "did you mean" suggestions for unknown titles |
 | Storage | Postgres (or SQLite locally) for the recommendation log + feedback, Redis (or in-process) cache; integration-tested against real servers |
@@ -182,6 +183,10 @@ reports/                      per-version benchmarks, significance, error analys
   bestsellers (Red Dead Redemption 2 → Game of Thrones). A `taste` setting (UI slider, API field)
   blends in story/setting similarity among well-liked titles (→ Justified, Tombstone, Longmire);
   it costs offline NDCG, measured in [docs/evaluation.md](docs/evaluation.md#serving-settings-taste-and-compilations).
+* **The catalog stops in 2023**: it is the Amazon Reviews 2023 snapshot (reviews up to Sept 2023);
+  TMDB/IGDB only describe titles already in it. Later releases (*Marvel Rivals*, *Cyberpunk:
+  Edgerunners*, the 2023 Mario film) are missing, and so are works Amazon US barely sold (the
+  *Clannad* visual novel). Same-universe links can only point at titles in the catalog.
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
   catalog scale.
 

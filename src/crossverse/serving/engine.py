@@ -371,6 +371,38 @@ class CrossVerseEngine:
             "popularity": int(self.popularity[i]), "image": _image(row), "kind": str(self.kinds()[i]),
         }
 
+    # ------------------------------------------------------------------------------------------
+    # Same universe: adaptations and tie-ins (serving/universe.py), shown next to the ranked list
+    # ------------------------------------------------------------------------------------------
+    def attach_universe(self, links: dict[int, list[int]]) -> None:
+        """Store franchise links (catalog index -> linked indices, most popular first)."""
+        self.__dict__["universe_links"] = {int(i): [int(j) for j in js] for i, js in links.items()}
+
+    def same_universe(self, liked_ids: list[str], target_domain: str | None = None, k: int = 8,
+                      exclude_ids: list[str] | None = None) -> list[dict[str, Any]]:
+        """Films / series / games from the same franchise as the liked titles ("The Last of Us" game ->
+        the HBO series), filtered to the requested target. Each carries `via`: the liked title it comes from.
+        Empty for engines saved without links."""
+        links: dict[int, list[int]] = self.__dict__.get("universe_links") or {}
+        wanted = {"game": {"game"}, "film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}}.get(
+            target_domain or "", {"game", "movie", "tv"})
+        kinds, match = self.kinds(), self._match_titles
+        liked = [self.catalog.index[i] for i in liked_ids if i in self.catalog.index]
+        # one entry per work, not per edition; the same title in another medium is the point ("Halo" game -> series)
+        seen = {(kinds[i], match[i]) for i in liked} | {(kinds[j], match[j]) for j in self.catalog.idx(exclude_ids or [])}
+        via: dict[int, int] = {}
+        for i in liked:
+            for j in links.get(i, ()):
+                via.setdefault(j, i)
+        out = []
+        for j in sorted(via, key=lambda j: (-self.popularity[j], j)):
+            if kinds[j] in wanted and (kinds[j], match[j]) not in seen:
+                seen.add((kinds[j], match[j]))
+                out.append({**self.item_dict(j), "via": str(self._titles[via[j]])})
+                if len(out) == k:
+                    break
+        return out
+
     @property
     def _match_titles(self) -> np.ndarray:
         """Normalised titles without a trailing '(YYYY)' or leading article, so 'Batman Begins (2005)'

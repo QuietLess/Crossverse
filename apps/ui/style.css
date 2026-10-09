@@ -320,6 +320,16 @@ main { max-width: 1320px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 40px) 4
 .facts dt { color: var(--muted); }
 .facts dd { margin: 0; }
 .detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.universe {
+  width: fit-content; max-width: 100%; min-width: min(100%, 360px);
+  margin: 0 0 22px; padding: 16px 0 0; border-radius: 22px; border: 1px solid color-mix(in srgb, var(--core) 45%, var(--line-2));
+  background: linear-gradient(120deg, color-mix(in srgb, var(--film) 10%, var(--glass)), var(--glass) 45%, color-mix(in srgb, var(--game) 10%, var(--glass)));
+  animation: pop .3s ease-out;
+}
+.universe-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 0 20px; }
+.universe-head h3 { margin: 0; font: 700 18px/1.2 var(--display); letter-spacing: -0.02em; }
+.universe .row { padding: 12px 20px 18px; }
+.universe .via { font-size: 11px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-title { margin: 6px 0 0; padding: 0 24px; font: 600 15px var(--display); color: var(--muted); }
 .row { display: grid; grid-auto-flow: column; grid-auto-columns: 128px; gap: 12px; overflow-x: auto; padding: 12px 24px 24px; }
 .row .card .card-body { padding: 7px 9px 9px; }

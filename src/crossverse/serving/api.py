@@ -104,6 +104,8 @@ class RecommendResponse(BaseModel):
     candidate_count: int
     latency_ms: float
     items: list[RecItem]
+    # films / series / games of the same franchise as the liked titles (adaptations, tie-ins); not ranked
+    same_universe: list[dict[str, Any]] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -220,7 +222,8 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
                                  resolved_profile=resolved, unresolved=unresolved,
                                  suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
-                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items)
+                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
+                                 same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude))
         state.store.log_recommendations([{**i.model_dump(), "model_version": res.model_version, "request_mode": mode}
                                          for i in items])
         for i in items:
