@@ -8,6 +8,8 @@ release year and a stable id. Matching is title-based with guards:
   `MIN_SIMILARITY`;
 * a year in the Amazon title ("Carrie (2013)") must agree within a year; a movie can't premiere after
   its earliest Amazon product (the DVD), and a game's release year must be within 2 years;
+* nothing released after LATEST_YEAR: every review in the data predates it, so "Road House" (the
+  1989 DVD) is never the 2024 remake;
 * ties go to the more popular candidate (TMDB vote count, IGDB rating count).
 
 Every HTTP response is cached in data/external/*.jsonl, so a run is resumable and repeatable without
@@ -35,6 +37,7 @@ from crossverse.data.canonical import _TOKENS, display_title, normalize_title
 log = logging.getLogger(__name__)
 
 MIN_SIMILARITY = 0.88
+LATEST_YEAR = 2023  # Amazon Reviews 2023 ends in September 2023: no reviewed work premiered later
 TITLE_YEAR = re.compile(r"\((\d{4})\)\s*$")
 
 
@@ -266,6 +269,8 @@ def pick_movie(title: str, catalog_year: int | None, candidates: list[tuple[str,
         year = _year(c.get("release_date") or c.get("first_air_date"))
         if title_year and year and abs(year - title_year) > 1:
             continue
+        if year and year > LATEST_YEAR:  # a remake of the reviewed work ("Salem's Lot" 2024)
+            continue
         key = _key(sim, c.get("vote_count"), year, catalog_year)
         if tv_hint is not None:
             key += FORMAT_BONUS if (kind == "tv") == tv_hint else 0.0
@@ -287,6 +292,8 @@ def pick_game(title: str, catalog_year: int | None, candidates: list[dict[str, A
         # ("Super Smash Bros. (2011)" is not the 1999 N64 one).
         cy = _year(c.get("first_release_date"))
         if title_year and cy and abs(cy - title_year) > 3:
+            continue
+        if cy and cy > LATEST_YEAR:
             continue
         key = _key(sim, c.get("total_rating_count"), cy, title_year or catalog_year)
         if key > best_key:
