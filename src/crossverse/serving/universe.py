@@ -35,6 +35,7 @@ TOO_BROAD = {
     "olympic games", "sports", "cartoon network", "nintendo", "sega", "walt disney", "disney s", "warner", "star", "game", "games", "movie", "the movie", "collection", "anime", "jump",
 }
 MIN_KEY_LEN = 4
+MIN_SUBTITLED_KEY = 6  # "<franchise>: <subtitle>" titles link by franchise name from this length
 MAX_LINKS = 24  # per item, most popular first
 MAX_FRANCHISES = 4  # more than this is a compilation ("Super NES Classic"), not one universe
 
@@ -71,7 +72,8 @@ def _clean_key(key: str) -> str:
 
 def franchise_names(raw: str) -> list[str]:
     """IGDB gives "collection" or a comma-joined franchise list ("Mario Bros., Mario")."""
-    return [k for k in (collection_key(p) for p in re.split(r",\s+", raw or "")) if k]
+    raw = re.sub(r",\s*(?=(?:inc|ltd|llc|co)\b\.?)", " ", raw or "", flags=re.I)  # "Monsters, Inc." is one name
+    return [k for k in (collection_key(p) for p in re.split(r",\s+", raw)) if k]
 
 
 def link_items(titles: Iterable[str], kinds: Iterable[str], collections: Iterable[str],
@@ -86,6 +88,7 @@ def link_items(titles: Iterable[str], kinds: Iterable[str], collections: Iterabl
     blocked = set(int(b) for b in blocked)
     norm_titles = [norm(t) for t in titles]
     roots = [title_root(t) for t in titles]
+    has_subtitle = [bool(re.search(r"\S\s*(?::| - | – )\s*\S", t)) for t in titles]
     names = [franchise_names(c) for c in collections]
     flagged = [bool(kw[i] & (GAME_TIE_IN if kinds[i] == "game" else SCREEN_ADAPTATION)) for i in range(len(titles))]
 
@@ -116,18 +119,21 @@ def link_items(titles: Iterable[str], kinds: Iterable[str], collections: Iterabl
         # 1. the same franchise name on both sides ("Resident Evil Collection" / "Resident Evil")
         for k in names[i]:
             link(i, by_name.get(k, ()))
+        # ... or "<franchise>: <subtitle>" ("Cyberpunk: Edgerunners", "The Witcher: Blood Origin"): a title that
+        # opens with the other side's franchise name. Short names are left out: "The Rage: Carrie 2" isn't Rage.
+        if len(roots[i]) >= MIN_SUBTITLED_KEY and has_subtitle[i]:
+            link(i, by_name.get(roots[i], ()))
         if not flagged[i]:
             continue
         # 2. an adaptation or tie-in: its franchise or title root is the other side's franchise or root
-        # (a franchise hit: its franchise is any title's root there, or its franchise / root is a franchise there)
-        by_franchise = set().union(*(by_name.get(k, set()) | by_root.get(k, set()) for k in names[i]),
-                                   by_name.get(roots[i], set()))
-        link(i, by_franchise | by_root.get(roots[i], set()))
-        # 3. ... and, without a franchise hit, the other side's franchise name anywhere in its title ("Super Mario
-        # Bros." holds "Mario"). Only a franchise name, not a mere title root: "Ice Age: Dawn of the Dinosaurs"
-        # must not reach the sitcom "Dinosaurs". "Pokémon: Destiny Deoxys" already hit the Pokémon franchise,
-        # so it never gets here and stays away from the game "Destiny".
-        if any((kinds[j] == "game") != (kinds[i] == "game") for j in by_franchise):
+        franchise_hits = set().union(*(by_name.get(k, set()) for k in names[i]), by_name.get(roots[i], set()))
+        link(i, franchise_hits | set().union(*(by_root.get(k, set()) for k in names[i]), by_root.get(roots[i], set())))
+        # 3. ... and, without a franchise-name hit, the other side's franchise name anywhere in its title ("Super
+        # Mario Bros." holds "Mario"). Only a franchise name, not a mere title root: "Ice Age: Dawn of the
+        # Dinosaurs" must not reach the sitcom "Dinosaurs". "Pokémon: Destiny Deoxys" already hit the Pokémon
+        # franchise, so it never gets here and stays away from the game "Destiny". A title-root hit doesn't stop
+        # it: "The Super Mario Collection" equals the root of "Super Mario 64", not the Mario franchise.
+        if any((kinds[j] == "game") != (kinds[i] == "game") for j in franchise_hits):
             continue
         words = norm_titles[i].split()
         for a in range(len(words)):
@@ -136,19 +142,24 @@ def link_items(titles: Iterable[str], kinds: Iterable[str], collections: Iterabl
     return {i: sorted(js, key=lambda j: (-popularity[j], j))[:MAX_LINKS] for i, js in links.items()}
 
 
-def from_engine(engine: Any, matches: Any) -> dict[int, list[int]]:
-    """Links for an engine's catalog, from the TMDB/IGDB matches (metadata.parquet). Matches are joined on
+def catalog_metadata(engine: Any, matches: Any) -> tuple[list[str], list[str], list[str], list[list[str]]]:
+    """Per catalog item: title, kind, franchise text and keywords. Matches (metadata.parquet) are joined on
     the external id, so items merged by the dataset build (several products, one work) still find theirs."""
     items = engine.catalog.items
-    meta = {(r.source, r.kind, int(r.ext_id)): (r.collection or "", list(r.keywords))
-            for r in matches.itertuples(index=False)}
+    meta = {} if matches is None else {(r.source, r.kind, int(r.ext_id)): (r.collection or "", list(r.keywords))
+                                       for r in matches.itertuples(index=False)}
     src = items["ext_source"].fillna("").to_numpy() if "ext_source" in items else np.full(len(items), "")
     ext_kind = items["ext_kind"].fillna("").to_numpy() if "ext_kind" in items else np.full(len(items), "")
     ext_id = items["ext_id"].fillna(-1).astype(int).to_numpy() if "ext_id" in items else np.full(len(items), -1)
     found = [meta.get((src[i], ext_kind[i], ext_id[i]), ("", [])) for i in range(len(items))]
+    return items["title"].tolist(), engine.kinds().tolist(), [f[0] for f in found], [f[1] for f in found]
+
+
+def from_engine(engine: Any, matches: Any) -> dict[int, list[int]]:
+    """Links for an engine's catalog, from the TMDB/IGDB matches (metadata.parquet)."""
+    titles, kinds, collections, keywords = catalog_metadata(engine, matches)
     blocked = np.union1d(engine.ineligible(), engine.compilations())
-    return link_items(items["title"].tolist(), engine.kinds().tolist(), [f[0] for f in found],
-                      [f[1] for f in found], engine.popularity, blocked)
+    return link_items(titles, kinds, collections, keywords, engine.popularity, blocked)
 
 
 def attach(engine: Any, metadata_path: Any) -> int:

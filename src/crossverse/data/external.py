@@ -174,6 +174,16 @@ class IGDB:
         return res
 
 
+    def query(self, body: str) -> list[dict[str, Any]]:
+        """Any /games query (cached by its text), e.g. recent releases for data/new_releases.py."""
+        key = f"query:{body}"
+        if key in self.cache:
+            return self.cache.get(key) or []
+        res = _request("POST", f"{self.BASE}/games", self.limiter, headers=self._auth(), data=body) or []
+        self.cache.put(key, res)
+        return res
+
+
 def _igdb_escape(q: str) -> str:
     return q.replace("\\", " ").replace('"', " ")
 

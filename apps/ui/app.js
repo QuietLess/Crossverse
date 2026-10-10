@@ -70,6 +70,8 @@ const kindOf = (it) => it.kind || (it.domain === "game" ? "game" : "movie");
 const KIND_LABEL = { movie: "Movie", tv: "TV series", game: "Game" };
 const domainLabel = (it) => KIND_LABEL[kindOf(it)];
 const tag = (it) => h("span", { class: `tag ${kindOf(it)}` }, { movie: "Film", tv: "TV", game: "Game" }[kindOf(it)]);
+// titles newer than the review data (served by story match only)
+const newBadge = (it) => (it.new ? h("span", { class: "tag new", title: "Newer than our review data: matched by story only" }, "New") : null);
 
 let toastTimer;
 function toast(msg) {
@@ -134,7 +136,7 @@ function renderDropdown() {
       onmousedown: (e) => { e.preventDefault(); addPick(it); },
     }, cover(it), h("div", {},
       h("div", { class: "t" }, it.title, " ", h("span", { class: "year" }, year(it))),
-      h("div", { class: "s" }, tag(it), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
+      h("div", { class: "s" }, tag(it), newBadge(it), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
   });
   dropdown.hidden = false;
   search.parentElement.setAttribute("aria-expanded", "true");
@@ -263,6 +265,7 @@ let recCtl, lastBody = "";
 function skeletons(n = 12) {
   $("#featured").replaceChildren();
   renderUniverse([]);
+  renderFresh([]);
   $("#grid").replaceChildren(...Array.from({ length: n }, () =>
     h("div", { class: "skeleton", "aria-hidden": "true" }, h("div", { class: "poster" }), h("div", { class: "line" }), h("div", { class: "line", style: "width:60%" }))));
 }
@@ -273,6 +276,7 @@ async function emptyState() {
   $("#notice").hidden = true;
   $("#featured").replaceChildren();
   renderUniverse([]);
+  renderFresh([]);
   const starters = h("div", { class: "starters" });
   $("#grid").replaceChildren(h("div", { class: "empty-state" },
     h("strong", {}, "Start with something you love"),
@@ -326,9 +330,17 @@ function renderResults(res, ms) {
   const notes = [];
   if (res.unresolved?.length) notes.push(`Not found: ${res.unresolved.join(", ")}`);
   if (res.cold_start) notes.push("No titles yet: picking by vibe and what people love most.");
+  for (const [id, subs] of Object.entries(res.stand_ins || {})) {
+    const name = state.picks.find((p) => p.item_id === id)?.title || "A new title";
+    notes.push(subs.length
+      ? `${name} is newer than our review data, so the list below uses ${subs.map((x) => x.title).join(" and ")} in its place.`
+      : `${name} is newer than our review data: see the new releases above.`);
+  }
   $("#notice").hidden = !notes.length;
   $("#notice").textContent = notes.join(" · ");
   renderUniverse(res.same_universe || []);
+  const inUniverse = new Set((res.same_universe || []).map((x) => x.item_id));
+  renderFresh((res.new_releases || []).filter((x) => !inUniverse.has(x.item_id)));
   if (!res.items.length && !res.same_universe?.length) {
     $("#featured").replaceChildren();
     $("#grid").replaceChildren(h("div", { class: "empty-state" }, h("strong", {}, "Nothing to show"), "Try adding another title."));
@@ -343,17 +355,27 @@ function renderResults(res, ms) {
 
 /** Adaptations and tie-ins of the picked titles (The Last of Us game -> the HBO series). Not ranked by taste. */
 function renderUniverse(items) {
-  const box = $("#universe");
+  const vias = [...new Set(items.map((x) => x.via))];
+  shelf($("#universe"), "universe-title", "🔗 Same universe", items,
+    items.length && `${describe(items)} from the world of ${vias.length === 1 ? vias[0] : "your picks"}`, vias.length > 1 ? "from" : null);
+}
+
+/** Titles newer than the review data, closest in story to the picks. */
+function renderFresh(items) {
+  const vias = new Set(items.map((x) => x.via));
+  shelf($("#fresh"), "fresh-title", "✨ New releases", items,
+    items.length && `${describe(items)} from after our review data (2023), matched by story`, vias.size > 1 ? "like" : null);
+}
+
+/** A titled row of compact cards; `viaLabel` adds "from X" / "like X" under each card. */
+function shelf(box, id, title, items, caption, viaLabel) {
   box.hidden = !items.length;
   if (!items.length) return box.replaceChildren();
-  const vias = [...new Set(items.map((x) => x.via))];
   box.replaceChildren(
-    h("div", { class: "universe-head" },
-      h("h3", { id: "universe-title" }, "🔗 Same universe"),
-      h("span", { class: "meta" }, `${describe(items)} from the world of ${vias.length === 1 ? vias[0] : "your picks"}`)),
+    h("div", { class: "universe-head" }, h("h3", { id }, title), h("span", { class: "meta" }, caption)),
     h("div", { class: "row" }, items.map((it) => {
       const el = card(it, null, true);
-      if (vias.length > 1) el.querySelector(".card-body").append(h("div", { class: "via" }, `from ${it.via}`));
+      if (viaLabel) el.querySelector(".card-body").append(h("div", { class: "via" }, `${viaLabel} ${it.via}`));
       return el;
     })));
 }
@@ -394,7 +416,8 @@ function tilt(el) {
 function card(it, rank, compact = false) {
   const el = h("article", { class: `card ${kindOf(it)}`, tabindex: "0", "aria-label": `${it.title}, ${domainLabel(it)}`, style: `animation-delay:${Math.min(rank || 0, 14) * 25}ms` },
     h("span", { class: "shimmer" }),
-    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), compact ? null : quickActions(it)),
+    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), newBadge(it),
+      compact ? null : quickActions(it)),
     h("div", { class: "card-body" },
       h("div", { class: "card-title" }, it.title, " ", h("span", { class: "year" }, year(it))),
       compact ? null : h("div", { class: "pills" }, (it.themes || []).slice(0, 3).map((t) => h("span", { class: "pill" }, t))),
@@ -444,7 +467,8 @@ async function openDetail(it) {
       h("div", { class: "poster" }, cover(it), tag(it)),
       h("div", {},
         h("h3", { id: "detail-title" }, it.title),
-        h("div", { class: "meta" }, [domainLabel(it), year(it)].filter(Boolean).join(" · ")),
+        h("div", { class: "meta" }, [domainLabel(it), year(it), it.new && "new release"].filter(Boolean).join(" · ")),
+        it.new ? h("p", { class: "meta" }, "Newer than our review data (2023), so no fans-in-common yet: it is matched by story, setting and franchise.") : null,
         h("div", { class: "pills", style: "margin-top:10px" }, (it.themes || []).map((t) => h("span", { class: "pill" }, t))),
         ev.summary ? h("p", {}, ev.summary) : null,
         facts.length ? h("dl", { class: "facts" }, facts.flatMap(([k, v]) => [h("dt", {}, k), h("dd", {}, v)])) : null,
@@ -455,6 +479,11 @@ async function openDetail(it) {
     h("p", { class: "row-title" }, "More like this"),
     h("div", { class: "row", id: "similar-row" }, Array.from({ length: 6 }, () => h("div", { class: "skeleton" }, h("div", { class: "poster" })))));
   if (!dialog.open) dialog.showModal();
+  if (it.new) {  // not in the trained model: no neighbours to show
+    $("#similar-row").previousElementSibling.remove();
+    $("#similar-row").remove();
+    return;
+  }
   try {
     const sim = await api(`/similar/${it.domain}/${encodeURIComponent(it.item_id)}?k=10`);
     $("#similar-row").replaceChildren(...[...sim.cross_domain.slice(0, 6), ...sim.same_domain.slice(0, 6)].map((x) => card(x, null, true)));

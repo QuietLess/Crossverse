@@ -75,6 +75,7 @@ chance, and *Kingsglaive* ↔ *Final Fantasy XV* 50×.
 | Post-ranking | Eligibility filter (no memberships, gift cards, DLC, amiibo/cases), MMR diversity, creator repetition penalty, domain quotas for unified lists, explicit-intent tiers for cold start |
 | Evaluation (§6) | Chronological per-user split **plus cross-domain holdout users whose target domain is entirely hidden from training**; Recall/NDCG/HitRate/MAP, coverage, diversity, novelty, popularity bias; segments; paired-bootstrap CIs; 100-case error analysis. Parallel (≈2.5 min). [docs/evaluation.md](docs/evaluation.md) |
 | Same universe | Adaptations and tie-ins next to the ranked list (*The Last of Us* game → the HBO series, *Super Mario Bros.* film → the Mario games), from TMDB collections / "based on video game" and IGDB franchises / tie-in tags; never mixed into the ranking. `src/crossverse/serving/universe.py`; add to an existing model with `python scripts/build_universe.py` |
+| New releases | ~2,900 films, series and games newer than (or missing from) the review data, from TMDB/IGDB (*Marvel Rivals*, *Cyberpunk: Edgerunners*, *The Super Mario Bros. Movie*): searchable, shown in a "✨ New releases" row by sentence-embedding similarity and in "Same universe" by franchise. Picked as a favourite, one stands in as its closest catalog titles for the ranked list. Never in the trained model. `python pipelines/new_releases.py` then `python scripts/build_new_releases.py` |
 | Explainability (§7) | Deterministic evidence objects + template verbalisation that only states what clears a threshold |
 | Serving (§8–9) | FastAPI: `/recommend`, `/recommend/movie-to-game`, `/recommend/game-to-movie`, `/similar/{domain}/{id}`, `/feedback`, `/explain/{id}`, `/health`, `/metrics`, `/items/search`, `/admin/stats`; "did you mean" suggestions for unknown titles |
 | Storage | Postgres (or SQLite locally) for the recommendation log + feedback, Redis (or in-process) cache; integration-tested against real servers |
@@ -186,7 +187,10 @@ reports/                      per-version benchmarks, significance, error analys
 * **The catalog stops in 2023**: it is the Amazon Reviews 2023 snapshot (reviews up to Sept 2023);
   TMDB/IGDB only describe titles already in it. Later releases (*Marvel Rivals*, *Cyberpunk:
   Edgerunners*, the 2023 Mario film) are missing, and so are works Amazon US barely sold (the
-  *Clannad* visual novel). Same-universe links can only point at titles in the catalog.
+  *Clannad* visual novel). Well-known later titles are added as **new releases** (TMDB/IGDB, refreshed by
+  re-running `pipelines/new_releases.py`), but nobody in the data has rated them: they are matched by story
+  and franchise only, never by "fans like you", and a new title picked as a favourite is approximated
+  by its closest catalog titles.
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
   catalog scale.
 

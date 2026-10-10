@@ -24,6 +24,8 @@ from crossverse.ranking.ranker import LightGBMRanker, RoutedRanker, diversify
 from crossverse.retrieval.base import Catalog, History, Retriever, top_k
 from crossverse.retrieval.baselines import CoPreferenceRetriever, ItemKNNRetriever
 from crossverse.retrieval.content import ContentRetriever
+from crossverse.serving import universe
+from crossverse.serving.new_releases import KIDS_GENRES, KIDS_PENALTY, STAND_IN_RATING
 
 
 @dataclass
@@ -125,6 +127,12 @@ def _image(row: Any) -> str | None:
 
 def _match_key(title: str) -> str:
     return re.sub(r"^(?:the|a|an) ", "", _norm(title))
+
+
+def _wanted_kinds(target_domain: str | None) -> set[str]:
+    """Item kinds a target asks for: "film" / "tv" / "game" / "movie" (films and series) / None (all)."""
+    return {"game": {"game"}, "film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}}.get(
+        target_domain or "", {"game", "movie", "tv"})
 
 
 def parse_query(text: str) -> tuple[str, str | None, int | None]:
@@ -381,26 +389,116 @@ class CrossVerseEngine:
     def same_universe(self, liked_ids: list[str], target_domain: str | None = None, k: int = 8,
                       exclude_ids: list[str] | None = None) -> list[dict[str, Any]]:
         """Films / series / games from the same franchise as the liked titles ("The Last of Us" game ->
-        the HBO series), filtered to the requested target. Each carries `via`: the liked title it comes from.
-        Empty for engines saved without links."""
+        the HBO series), filtered to the requested target; new releases first, then catalog titles by
+        popularity. Each carries `via`: the liked title it comes from. Empty for engines saved without links."""
         links: dict[int, list[int]] = self.__dict__.get("universe_links") or {}
-        wanted = {"game": {"game"}, "film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}}.get(
-            target_domain or "", {"game", "movie", "tv"})
-        kinds, match = self.kinds(), self._match_titles
-        liked = [self.catalog.index[i] for i in liked_ids if i in self.catalog.index]
+        fresh, n_cat = self.fresh, len(self.catalog)
+        new_links = fresh.links if fresh is not None else {}
+        wanted = _wanted_kinds(target_domain)
+        liked = self._combined(liked_ids)
         # one entry per work, not per edition; the same title in another medium is the point ("Halo" game -> series)
-        seen = {(kinds[i], match[i]) for i in liked} | {(kinds[j], match[j]) for j in self.catalog.idx(exclude_ids or [])}
+        seen = {self._work_key(i) for i in liked} | {self._work_key(j) for j in self._combined(exclude_ids or [])}
         via: dict[int, int] = {}
         for i in liked:
-            for j in links.get(i, ()):
+            for j in [*links.get(i, ()), *new_links.get(i, ())]:
                 via.setdefault(j, i)
         out = []
-        for j in sorted(via, key=lambda j: (-self.popularity[j], j)):
-            if kinds[j] in wanted and (kinds[j], match[j]) not in seen:
-                seen.add((kinds[j], match[j]))
-                out.append({**self.item_dict(j), "via": str(self._titles[via[j]])})
+        for j in sorted(via, key=lambda j: (j < n_cat, -self.popularity[j] if j < n_cat else 0, j)):
+            key = self._work_key(j)
+            if key[0] in wanted and key not in seen:
+                seen.add(key)
+                out.append({**self._describe(j), "via": self._describe(via[j])["title"]})
                 if len(out) == k:
                     break
+        return out
+
+    # ------------------------------------------------------------------------------------------
+    # New releases: titles after the review data (serving/new_releases.py), story match only
+    # ------------------------------------------------------------------------------------------
+    @property
+    def fresh(self) -> Any:
+        """The attached NewReleaseIndex, or None."""
+        return self.__dict__.get("new_releases_")
+
+    def attach_new_releases(self, index: Any) -> None:
+        self.__dict__["new_releases_"] = index
+
+    def _combined(self, ids: list[str]) -> list[int]:
+        """Item ids -> one index space: catalog items first, then new releases (len(catalog) + row)."""
+        fresh, out = self.fresh, []
+        for i in ids:
+            if i in self.catalog.index:
+                out.append(self.catalog.index[i])
+            elif fresh is not None and i in fresh:
+                out.append(len(self.catalog) + fresh.index[i])
+        return out
+
+    def _describe(self, j: int) -> dict[str, Any]:
+        n_cat = len(self.catalog)
+        return self.item_dict(j) if j < n_cat else self.fresh.item_dict(j - n_cat)
+
+    def _work_key(self, j: int) -> tuple[str, str]:
+        if j < len(self.catalog):
+            return str(self.kinds()[j]), str(self._match_titles[j])
+        d = self._describe(j)
+        return d["kind"], _match_key(_TRAILING_YEAR.sub("", d["title"]))
+
+    def describe(self, item_id: str) -> dict[str, Any] | None:
+        """item_dict for a catalog item or a new release; None if unknown."""
+        found = self._combined([item_id])
+        return self._describe(found[0]) if found else None
+
+    def expand_profile(self, liked: list[tuple[str, float]]
+                       ) -> tuple[list[tuple[str, float]], dict[str, list[dict[str, Any]]]]:
+        """Replace picked new releases by their catalog stand-ins (the ranker only knows catalog items).
+        Returns the catalog profile and, per new release, the stand-ins used."""
+        fresh = self.fresh
+        pairs: list[tuple[str, float]] = []
+        used: dict[str, list[dict[str, Any]]] = {}
+        picked = {i for i, _ in liked}
+        for item_id, rating in liked:
+            if item_id in self.catalog.index or fresh is None or item_id not in fresh:
+                pairs.append((item_id, rating))
+                continue
+            stand = [j for j in fresh.stand_ins.get(fresh.index[item_id], [])
+                     if str(self.catalog.item_ids[j]) not in picked]
+            used[item_id] = [self.item_dict(j) for j in stand]
+            pairs += [(str(self.catalog.item_ids[j]), min(rating, STAND_IN_RATING)) for j in stand]
+        return pairs, used
+
+    def new_releases(self, liked_ids: list[str], target_domain: str | None = None, k: int = 8,
+                     exclude_ids: list[str] | None = None) -> list[dict[str, Any]]:
+        """New releases closest in story and setting to the liked titles (catalog or new), one per franchise.
+        Each carries `via`: the liked title it is closest to."""
+        fresh, sem = self.fresh, self.retrievers.get("semantic")
+        liked = self._combined(liked_ids)
+        if fresh is None or sem is None or not liked:
+            return []
+        n_cat = len(self.catalog)
+        emb = sem.embeddings_  # type: ignore[attr-defined]
+        vecs = np.stack([emb[i] if i < n_cat else fresh.embeddings[i - n_cat] for i in liked])
+        profile = vecs.mean(axis=0)
+        scores = fresh.embeddings @ (profile / max(float(np.linalg.norm(profile)), 1e-9))
+        # Children's titles only for profiles with family titles: Overwatch -> not "Spidey and His Amazing Friends".
+        if not any("family" in self._describe(i)["themes"] for i in liked):
+            kids = fresh.items["genres"].map(lambda g: bool(KIDS_GENRES & set(g))).to_numpy()
+            scores = scores - KIDS_PENALTY * kids
+        wanted = _wanted_kinds(target_domain)
+        seen = {self._work_key(i) for i in liked} | {self._work_key(j) for j in self._combined(exclude_ids or [])}
+        families: set[str] = set()
+        out = []
+        for n in np.argsort(-scores):
+            d = fresh.item_dict(int(n))
+            key = self._work_key(n_cat + int(n))
+            family = universe.title_root(d["title"]) or key[1]
+            if d["kind"] not in wanted or key in seen or family in families:
+                continue
+            seen.add(key)
+            families.add(family)
+            closest = liked[int(np.argmax(vecs @ fresh.embeddings[n]))]
+            out.append({**d, "via": self._describe(closest)["title"], "score": float(scores[n])})
+            if len(out) == k:
+                break
         return out
 
     @property
@@ -427,15 +525,25 @@ class CrossVerseEngine:
         hits = set.intersection(*sets) if sets else set()
         mask = self.catalog.mask(domain)
         idx = np.array(sorted(i for i in hits if mask[i]), dtype=np.int64)
-        if not len(idx):
-            return []
-        match, key_q = self._match_titles, _match_key(title)
-        exact = np.array([match[i] == key_q for i in idx])
-        prefix = np.array([match[i].startswith(key_q) for i in idx])
-        years = self.catalog.items["year"].to_numpy()
-        same_year = (years[idx] == year) if year else np.zeros(len(idx), dtype=bool)
-        key = exact * 1e10 + same_year * 1e9 + prefix * 1e6 + self.popularity[idx]
-        return [self.item_dict(int(i)) for i in idx[np.argsort(-key)][:limit]]
+        found: list[dict[str, Any]] = []
+        n_exact = 0
+        if len(idx):
+            match, key_q = self._match_titles, _match_key(title)
+            exact = np.array([match[i] == key_q for i in idx])
+            prefix = np.array([match[i].startswith(key_q) for i in idx])
+            years = self.catalog.items["year"].to_numpy()
+            same_year = (years[idx] == year) if year else np.zeros(len(idx), dtype=bool)
+            key = exact * 1e10 + same_year * 1e9 + prefix * 1e6 + self.popularity[idx]
+            found = [self.item_dict(int(i)) for i in idx[np.argsort(-key)][:limit]]
+            n_exact = int(exact.sum())
+        if self.fresh is None:
+            return found
+        # New releases after the catalog's exact matches: "Dune" finds the 1984 film first, then the 2021 one.
+        new = self.fresh.search(title, domain, limit)
+        exact_new = [self.fresh.item_dict(n) for is_exact, n in new if is_exact]
+        other_new = [self.fresh.item_dict(n) for is_exact, n in new if not is_exact]
+        # (two partial new matches go before the catalog's partial ones: "Baldur's Gate" -> Baldur's Gate III)
+        return (found[:n_exact] + exact_new + other_new[:2] + found[n_exact:] + other_new[2:])[:limit]
 
     def _prefix_index(self) -> dict[str, set[int]]:
         """Title-token prefix -> item indices (type-ahead search). Built lazily on first use."""
@@ -470,7 +578,7 @@ class CrossVerseEngine:
     def resolve_detail(self, name_or_id: str, domain: str | None = None) -> tuple[str | None, list[dict[str, Any]]]:
         """Resolve a title or id. Also returns exact-title matches in the *other* domain, so callers can
         tell the user 'Batman Begins' could also mean the game (pass 'game: Batman Begins' to pick it)."""
-        if name_or_id in self.catalog.index:
+        if name_or_id in self.catalog.index or (self.fresh is not None and name_or_id in self.fresh):
             return name_or_id, []
         hits = self.search(name_or_id, domain, 10)
         if not hits:
@@ -480,7 +588,7 @@ class CrossVerseEngine:
         if domain or hinted_domain:
             return best["item_id"], []
         q, match = _match_key(title), self._match_titles
-        alternatives = [h for h in hits[1:] if h["domain"] != best["domain"]
+        alternatives = [h for h in hits[1:] if h["domain"] != best["domain"] and h["item_id"] in self.catalog.index
                         and match[self.catalog.index[h["item_id"]]] == q]
         return best["item_id"], alternatives[:3]
 

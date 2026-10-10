@@ -106,6 +106,10 @@ class RecommendResponse(BaseModel):
     items: list[RecItem]
     # films / series / games of the same franchise as the liked titles (adaptations, tie-ins); not ranked
     same_universe: list[dict[str, Any]] = Field(default_factory=list)
+    # titles newer than the review data, closest in story to the liked titles; not ranked
+    new_releases: list[dict[str, Any]] = Field(default_factory=list)
+    # picked new release -> the catalog titles standing in for it in the ranked list
+    stand_ins: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -195,7 +199,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
                 M.UNKNOWN_ITEMS.inc()
                 continue
             pairs.append((iid, p.rating))
-            resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": p.rating, "input": p.item})
+            resolved.append({**(eng.describe(iid) or {}), "rating": p.rating, "input": p.item})
         for d in disliked:
             iid, alternatives = eng.resolve_detail(d, source_domain)
             if alternatives:
@@ -205,7 +209,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
                 M.UNKNOWN_ITEMS.inc()
                 continue
             dis.append(iid)
-            resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": 1.0, "input": d})
+            resolved.append({**(eng.describe(iid) or {}), "rating": 1.0, "input": d})
         return pairs, dis, resolved, unresolved, ambiguous
 
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
@@ -217,13 +221,19 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         cached = state.cache.get(key)
         if cached:
             return RecommendResponse(**cached)
-        res: EngineResult = eng.recommend(pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste)
+        # New releases aren't in the trained model: their catalog stand-ins take their place in the ranking.
+        ranked_pairs, stand_ins = eng.expand_profile(pairs)
+        res: EngineResult = eng.recommend(ranked_pairs, dis, target, k, prefs, free_text, exclude, explain, diversify,
+                                          taste)
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
                                  resolved_profile=resolved, unresolved=unresolved,
                                  suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
                                  candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
-                                 same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude))
+                                 same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude),
+                                 new_releases=eng.new_releases([i for i, _ in pairs], target,
+                                                               exclude_ids=[*(exclude or []), *dis]),
+                                 stand_ins=stand_ins)
         state.store.log_recommendations([{**i.model_dump(), "model_version": res.model_version, "request_mode": mode}
                                          for i in items])
         for i in items:
@@ -286,10 +296,10 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
 
     @app.get("/items/{item_id}", tags=["items"])
     def item(item_id: str) -> dict[str, Any]:
-        eng = engine_or_503()
-        if item_id not in eng.catalog.index:
+        found = engine_or_503().describe(item_id)
+        if found is None:
             raise HTTPException(404, "unknown item")
-        return eng.item_dict(eng.catalog.index[item_id])
+        return found
 
     @app.get("/themes", tags=["items"])
     def themes() -> list[str]:

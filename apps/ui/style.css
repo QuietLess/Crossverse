@@ -329,6 +329,10 @@ main { max-width: 1320px; margin: 0 auto; padding: 28px clamp(16px, 4vw, 40px) 4
 .universe-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 0 20px; }
 .universe-head h3 { margin: 0; font: 700 18px/1.2 var(--display); letter-spacing: -0.02em; }
 .universe .row { padding: 12px 20px 18px; }
+.poster .tag.new { top: auto; right: auto; left: 8px; bottom: 8px; color: white; background: linear-gradient(120deg, var(--core), var(--tv)); box-shadow: 0 2px 10px rgb(0 0 0 / .35); }
+.tag.new { color: white; background: linear-gradient(120deg, var(--core), var(--tv)); }
+.s .tag.new { margin-left: 4px; }
+.fresh { border-color: color-mix(in srgb, var(--tv) 45%, var(--line-2)); }
 .universe .via { font-size: 11px; color: var(--muted); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-title { margin: 6px 0 0; padding: 0 24px; font: 600 15px var(--display); color: var(--muted); }
 .row { display: grid; grid-auto-flow: column; grid-auto-columns: 128px; gap: 12px; overflow-x: auto; padding: 12px 24px 24px; }

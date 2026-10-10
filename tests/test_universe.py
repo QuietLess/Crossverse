@@ -107,3 +107,17 @@ def test_api_returns_same_universe(linked, small_settings):
         r = c.post("/recommend", json={"liked": [{"item": movie}], "target_domain": "game", "k": 5})
     assert r.status_code == 200, r.text
     assert [x["item_id"] for x in r.json()["same_universe"]] == games
+
+
+def test_franchise_colon_subtitle_links_without_tags():
+    got = links([("Cyberpunk: Edgerunners", "tv", "", []), ("Cyberpunk 2077", "game", "Cyberpunk", []),
+                 ("The Rage: Carrie 2", "movie", "", []), ("Rage 2", "game", "Rage", [])])
+    assert got["Cyberpunk: Edgerunners"] == ["Cyberpunk 2077"]
+    assert "The Rage: Carrie 2" not in got  # too short a name to trust without an adaptation tag
+
+
+def test_a_title_root_hit_does_not_hide_the_franchise():
+    # "The Super Mario Collection" equals the root of "Super Mario 64" but the film belongs to all of Mario
+    got = links([("The Super Mario Bros. Movie", "movie", "The Super Mario Collection", BASED_ON_GAME),
+                 ("Super Mario 64", "game", "Mario", []), ("Super Mario Odyssey", "game", "Mario", [])])
+    assert sorted(got["The Super Mario Bros. Movie"]) == ["Super Mario 64", "Super Mario Odyssey"]
