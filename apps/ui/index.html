@@ -56,6 +56,10 @@
         </div>
 
         <ul id="picks" class="picks" aria-label="Your titles"></ul>
+        <label class="import-btn" title="Letterboxd: Settings → Data → Export your data. Pick the downloaded .zip (or ratings.csv). Only film names, years and stars are sent.">
+          📥 Import my Letterboxd ratings
+          <input id="letterboxd-file" type="file" accept=".zip,.csv,application/zip,text/csv" hidden>
+        </label>
 
         <div id="moods" class="moods" hidden>
           <p class="hint">No titles yet? Pick a vibe instead:</p>

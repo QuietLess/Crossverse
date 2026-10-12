@@ -596,6 +596,19 @@ class CrossVerseEngine:
             self.__dict__["_prefix"] = index
         return self.__dict__["_prefix"]
 
+    def match_title(self, name: str, year: int | None = None, domain: str | None = "movie") -> dict[str, Any] | None:
+        """Strict title lookup for imports (a Letterboxd export): the same title, and when a year is given,
+        released within a year of it. Never a merely similar title: a wrong pick would skew the profile."""
+        key = _match_key(_TRAILING_YEAR.sub("", name))
+        if not key:
+            return None
+        for hit in self.search(name, domain, 20):
+            if _match_key(_TRAILING_YEAR.sub("", hit["title"])) != key:
+                continue
+            if year is None or hit["year"] is None or abs(hit["year"] - year) <= 1:
+                return hit
+        return None
+
     def suggest(self, query: str, domain: str | None = None, n: int = 3) -> list[dict[str, Any]]:
         """'Did you mean' for unresolved titles: candidates sharing a token prefix, ranked by similarity."""
         from difflib import SequenceMatcher
