@@ -73,6 +73,20 @@ const KIND_LABEL = { movie: "Movie", tv: "TV series", game: "Game" };
 const domainLabel = (it) => KIND_LABEL[kindOf(it)];
 const tag = (it) => h("span", { class: `tag ${kindOf(it)}` }, { movie: "Film", tv: "TV", game: "Game" }[kindOf(it)]);
 // titles newer than the review data (served by story match only)
+/** Public score: IGDB critics (games, /100) first, else the audience score (TMDB /10, IGDB players /100). */
+function scoreText(it) {
+  const r = it.rating;
+  if (!r) return null;
+  if (r.critics != null) return { short: `🏆 ${r.critics}`, long: `Critics ${r.critics}/100 (${r.critics_count} reviews, IGDB)` };
+  if (r.audience == null) return null;
+  return r.source === "tmdb"
+    ? { short: `★ ${r.audience.toFixed(1)}`, long: `Audience ${r.audience.toFixed(1)}/10 (${r.votes.toLocaleString()} votes, TMDB)` }
+    : { short: `★ ${Math.round(r.audience)}`, long: `Players ${Math.round(r.audience)}/100 (${r.votes.toLocaleString()} ratings, IGDB)` };
+}
+const scoreBadge = (it) => {
+  const s = scoreText(it);
+  return s ? h("span", { class: "score", title: s.long }, s.short) : null;
+};
 const newBadge = (it) => (it.new ? h("span", { class: "tag new", title: "Newer than our review data: matched by story only" }, "New") : null);
 
 let toastTimer;
@@ -421,7 +435,7 @@ function card(it, rank, compact = false) {
     h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), newBadge(it),
       compact ? null : quickActions(it)),
     h("div", { class: "card-body" },
-      h("div", { class: "card-title" }, it.title, " ", h("span", { class: "year" }, year(it))),
+      h("div", { class: "card-title" }, it.title, " ", h("span", { class: "year" }, year(it)), " ", scoreBadge(it)),
       compact ? null : h("div", { class: "pills" }, (it.themes || []).slice(0, 3).map((t) => h("span", { class: "pill" }, t))),
       compact ? null : because(it),
       compact || !it.evidence?.summary ? null : h("div", { class: "reason" }, it.evidence.summary.replace(/^Recommended because /, "").replace(/^./, (c) => c.toUpperCase()))));
@@ -440,7 +454,7 @@ function feature(it) {
     h("div", {},
       h("div", { class: "eyebrow" }, "★ Top match"),
       h("h3", {}, it.title, " ", h("span", { class: "year" }, year(it))),
-      h("div", { class: "pills" }, (it.themes || []).slice(0, 5).map((t) => h("span", { class: "pill" }, t))),
+      h("div", { class: "pills" }, scoreBadge(it), (it.themes || []).slice(0, 5).map((t) => h("span", { class: "pill" }, t))),
       reason ? h("p", { class: "reason" }, reason) : null,
       h("div", { class: "actions" },
         h("button", { type: "button", class: "btn primary", onclick: (e) => { e.stopPropagation(); addPick(it); toast(`♥ Added ${it.title}`); } }, "♥ Add to my taste"),
@@ -459,6 +473,9 @@ dialog.addEventListener("click", (e) => { if (e.target === dialog || e.target.cl
 async function openDetail(it) {
   const ev = it.evidence || {};
   const facts = [];
+  const score = scoreText(it);
+  if (score) facts.push(["Score", score.long]);
+  if (it.rating?.critics != null && it.rating.audience != null) facts.push(["Players", `${Math.round(it.rating.audience)}/100 (${it.rating.votes.toLocaleString()} ratings, IGDB)`]);
   if (ev.shared_themes?.length) facts.push(["Shared themes", ev.shared_themes.join(", ")]);
   if (ev.users_who_liked_both) facts.push(["Fans in common", `${ev.users_who_liked_both} people liked both`]);
   if (ev.anchors?.length) facts.push(["Closest to", ev.anchors.map((a) => a.title).join(", ")]);

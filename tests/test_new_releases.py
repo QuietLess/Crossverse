@@ -124,3 +124,32 @@ def test_api_with_a_new_release_picked(fresh, small_settings):
 def test_index_without_new_titles_is_harmless(trained):
     engine, _, _ = trained
     assert engine.fresh is None or isinstance(engine.fresh, NewReleaseIndex)
+
+
+def test_scores_need_enough_votes(trained):
+    engine, _, _ = trained
+    items = engine.catalog.items
+    saved = engine.__dict__.pop("scores_", None)
+    try:
+        # the fixture catalog has no external ids: give two items one, then score them
+        ext = items[["ext_source", "ext_kind", "ext_id"]].copy() if "ext_id" in items else None
+        items["ext_source"], items["ext_kind"], items["ext_id"] = "", "", -1
+        items.loc[items.index[0], ["ext_source", "ext_kind", "ext_id"]] = ["igdb", "game", 7]
+        items.loc[items.index[1], ["ext_source", "ext_kind", "ext_id"]] = ["tmdb", "movie", 8]
+        scores = pd.DataFrame([
+            {"source": "igdb", "kind": "game", "ext_id": 7, "critics": 91, "critics_count": 2,  # too few critics
+             "audience": 88, "audience_count": 400},
+            {"source": "tmdb", "kind": "movie", "ext_id": 8, "critics": None, "critics_count": 0,
+             "audience": 9.9, "audience_count": 12}])  # too few votes
+        assert engine.attach_scores(scores) == 1
+        assert engine.rating(0) == {"source": "igdb", "audience": 88.0, "votes": 400}
+        assert engine.rating(1) is None
+        assert engine.item_dict(0)["rating"]["audience"] == 88.0
+    finally:
+        if ext is not None:
+            items[["ext_source", "ext_kind", "ext_id"]] = ext
+        else:
+            items.drop(columns=["ext_source", "ext_kind", "ext_id"], inplace=True)
+        engine.__dict__.pop("scores_", None)
+        if saved is not None:
+            engine.__dict__["scores_"] = saved

@@ -44,6 +44,8 @@ def main(argv: list[str] | None = None) -> str:
     report["same_universe_items"] = universe.attach(engine, s.data.external_metadata)  # adaptations, tie-ins
     report["new_releases"] = new_releases.attach(  # titles newer than the review data, story match only
         engine, s.data.external_metadata.parent / "new_releases.parquet", s.data.external_metadata)
+    scores = s.data.external_metadata.parent / "scores.parquet"  # TMDB / IGDB ratings shown on cards
+    report["scored_items"] = engine.attach_scores(pd.read_parquet(scores)) if scores.exists() else 0
     engine.save(d / "engine.pkl")
     with open(d / "split.pkl", "wb") as fh:
         pickle.dump(split, fh, protocol=pickle.HIGHEST_PROTOCOL)
