@@ -10,9 +10,11 @@ const FAVOURITES = [
   { q: "BioShock", domain: "game" }, { q: "Spirited Away", domain: "movie" },
   { q: "Alien", domain: "movie" }, { q: "Final Fantasy VII", domain: "game" },
 ];
+// The slider runs from Balanced (0.5) to Same DNA (1). Below 0.5 the trained ranker alone mostly returns
+// bestsellers (judged set: 16% good / 62.5% bad picks at 0), so the UI doesn't offer it; the API still does.
+const TASTE_MIN = 0.5;
 const VIBES = [
-  { max: 0.25, label: "🔥 Crowd favourites", hint: "what fans of your picks love most" },
-  { max: 0.6, label: "⚖️ Balanced", hint: "fan favourites that also share the feel" },
+  { max: 0.7, label: "⚖️ Balanced", hint: "fan favourites that also share the feel" },
   { max: 1.01, label: "🧬 Same DNA", hint: "closest story, setting and themes" },
 ];
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -105,7 +107,7 @@ async function loadUrl() {
   state.to = ["game", "film", "tv", "both"].includes(to) ? to : "game";
   state.toTouched = p.has("to");
   const t = Number(p.get("t"));
-  state.taste = p.has("t") && t >= 0 && t <= 1 ? t : 0.8;
+  state.taste = p.has("t") && t >= 0 && t <= 1 ? Math.max(t, TASTE_MIN) : 0.8;
   state.moods = new Set((p.get("m") || "").split(",").filter(Boolean));
   state.text = p.get("q") || "";
   const ids = [...(p.get("l") || "").split(",").map((id) => [id, true]), ...(p.get("d") || "").split(",").map((id) => [id, false])]
