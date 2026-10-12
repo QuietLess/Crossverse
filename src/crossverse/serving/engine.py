@@ -42,6 +42,7 @@ class Recommendation:
     evidence: dict[str, Any]
     image: str | None = None
     kind: str = ""  # "movie" | "tv" | "game"
+    rating: dict[str, Any] | None = None  # public scores (attach_scores)
 
 
 @dataclass
@@ -90,6 +91,9 @@ _PREFIX_DOMAIN = {"movie": "movie", "film": "movie", "tv": "movie", "show": "mov
 _BOOK_REVIEW = re.compile(
     r"\b(?:publishers\s+weekly|booklist|kirkus(?:\s+reviews)?|school\s+library\s+journal|library\s+journal)\b", re.I)
 _GUIDE_TITLE = re.compile(r"\b(?:strategy|official)\s+(?:nintendo\s+)?guide\b|\bguide\s+final\s+fantasy\b", re.I)
+
+MIN_CRITICS = 3  # IGDB critic reviews behind a shown critic score
+MIN_VOTES = {"tmdb": 50, "igdb": 10}  # audience votes behind a shown audience score
 
 KIND_TARGETS = {"film": "movie", "tv": "tv"}  # extra API targets: one kind of the movie domain
 _TV_TITLE = re.compile(
@@ -328,7 +332,7 @@ class CrossVerseEngine:
                     recommendation_id=uuid.uuid4().hex[:16], item_id=str(row["item_id"]), title=str(row["title"]),
                     domain=str(row["domain"]), rank=rank + 1, score=float(scores[j]), sources=srcs,
                     themes=list(row["themes"]), year=year, evidence=ev, image=_image(row),
-                    kind=str(self.kinds()[i]),
+                    kind=str(self.kinds()[i]), rating=self.rating(i),
                 )
             )
         return EngineResult(out, self.version, (time.perf_counter() - t0) * 1000, len(cands.idx), mix, cold)
@@ -377,6 +381,7 @@ class CrossVerseEngine:
             "item_id": str(row["item_id"]), "title": str(row["title"]), "domain": str(row["domain"]),
             "themes": list(row["themes"]), "year": int(row["year"]) if row["year"] and row["year"] > 0 else None,
             "popularity": int(self.popularity[i]), "image": _image(row), "kind": str(self.kinds()[i]),
+            "rating": self.rating(i),
         }
 
     # ------------------------------------------------------------------------------------------
@@ -413,6 +418,41 @@ class CrossVerseEngine:
         return out
 
     # ------------------------------------------------------------------------------------------
+    # Public scores (data/scores.py): TMDB audience rating, IGDB critic and player ratings
+    # ------------------------------------------------------------------------------------------
+    def attach_scores(self, scores: Any) -> int:
+        """Join scores.parquet to catalog items and new releases by external id; returns how many got one.
+        Only scores with enough votes are kept (MIN_VOTES), so a 10/10 from three people never shows."""
+        by_id: dict[tuple[str, str, int], dict[str, Any]] = {}
+        for r in scores.itertuples(index=False):
+            out: dict[str, Any] = {"source": r.source}
+            if r.critics == r.critics and r.critics is not None and r.critics_count >= MIN_CRITICS:
+                out.update(critics=int(r.critics), critics_count=int(r.critics_count))
+            if r.audience == r.audience and r.audience is not None and r.audience_count >= MIN_VOTES[r.source]:
+                out.update(audience=float(r.audience), votes=int(r.audience_count))
+            if len(out) > 1:
+                by_id[(r.source, r.kind, int(r.ext_id))] = out
+        items, n_cat, found = self.catalog.items, len(self.catalog), {}
+        if "ext_id" in items:
+            keys = zip(items["ext_source"].fillna(""), items["ext_kind"].fillna(""), items["ext_id"].fillna(-1).astype(int),
+                       strict=True)
+            found = {i: by_id[k] for i, k in enumerate(keys) if k in by_id}
+        if self.fresh is not None:
+            new = self.fresh.items
+            for n, k in enumerate(zip(new["ext_source"], new["kind"], new["ext_id"].astype(int), strict=True)):
+                if k in by_id:
+                    found[n_cat + n] = by_id[k]
+        self.__dict__["scores_"] = found
+        return len(found)
+
+    def rating(self, j: int) -> dict[str, Any] | None:
+        """Public score of an item (combined index: catalog first, then new releases), or None."""
+        return (self.__dict__.get("scores_") or {}).get(int(j))
+
+    def _new_item(self, n: int) -> dict[str, Any]:
+        return {**self.fresh.item_dict(n), "rating": self.rating(len(self.catalog) + n)}
+
+    # ------------------------------------------------------------------------------------------
     # New releases: titles after the review data (serving/new_releases.py), story match only
     # ------------------------------------------------------------------------------------------
     @property
@@ -435,7 +475,7 @@ class CrossVerseEngine:
 
     def _describe(self, j: int) -> dict[str, Any]:
         n_cat = len(self.catalog)
-        return self.item_dict(j) if j < n_cat else self.fresh.item_dict(j - n_cat)
+        return self.item_dict(j) if j < n_cat else self._new_item(j - n_cat)
 
     def _work_key(self, j: int) -> tuple[str, str]:
         if j < len(self.catalog):
@@ -488,7 +528,7 @@ class CrossVerseEngine:
         families: set[str] = set()
         out = []
         for n in np.argsort(-scores):
-            d = fresh.item_dict(int(n))
+            d = self._new_item(int(n))
             key = self._work_key(n_cat + int(n))
             family = universe.title_root(d["title"]) or key[1]
             if d["kind"] not in wanted or key in seen or family in families:
@@ -540,8 +580,8 @@ class CrossVerseEngine:
             return found
         # New releases after the catalog's exact matches: "Dune" finds the 1984 film first, then the 2021 one.
         new = self.fresh.search(title, domain, limit)
-        exact_new = [self.fresh.item_dict(n) for is_exact, n in new if is_exact]
-        other_new = [self.fresh.item_dict(n) for is_exact, n in new if not is_exact]
+        exact_new = [self._new_item(n) for is_exact, n in new if is_exact]
+        other_new = [self._new_item(n) for is_exact, n in new if not is_exact]
         # (two partial new matches go before the catalog's partial ones: "Baldur's Gate" -> Baldur's Gate III)
         return (found[:n_exact] + exact_new + other_new[:2] + found[n_exact:] + other_new[2:])[:limit]
 

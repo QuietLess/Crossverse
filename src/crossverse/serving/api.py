@@ -90,6 +90,8 @@ class RecItem(BaseModel):
     evidence: dict[str, Any]
     image: str | None = Field(None, description="cover image URL (Amazon product image), if known")
     kind: str = Field("", description="movie, tv or game")
+    rating: dict[str, Any] | None = Field(None, description="public scores: TMDB audience (0-10) or IGDB critics / "
+                                                            "players (0-100), with vote counts")
 
 
 class RecommendResponse(BaseModel):
