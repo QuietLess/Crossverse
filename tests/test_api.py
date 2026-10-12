@@ -146,3 +146,11 @@ def test_film_and_tv_targets(client, trained):
         kinds = {i["kind"] for i in r.json()["items"]}
         expected = {"film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}, "game": {"game"}}[target]
         assert kinds <= expected
+
+
+def test_single_unified_pick(client, trained):
+    # k=1 for "everything" leaves one domain a quota of 0; that must not crash
+    engine, _, _ = trained
+    r = client.post("/recommend", json={"liked": [{"item": _titles(engine, "movie", 1)[0]}], "k": 1})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["items"]) == 1

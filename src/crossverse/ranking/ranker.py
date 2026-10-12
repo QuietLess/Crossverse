@@ -221,4 +221,4 @@ def diversify(idx: np.ndarray, scores: np.ndarray, embeddings: np.ndarray, k: in
         if creators is not None and creators[idx[pool[j]]]:
             c = creators[idx[pool[j]]]
             seen_creators[c] = seen_creators.get(c, 0) + 1
-    return pool[np.asarray(chosen)]
+    return pool[np.asarray(chosen, dtype=np.int64)]  # may be empty (a domain quota of 0)
