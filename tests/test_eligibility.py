@@ -10,6 +10,11 @@ from crossverse.serving.engine import _NOT_RECOMMENDABLE
     "SNES/NES FC Twin Video Game System - Black", "Digital Innovations 4190100 Clean Dr. Laser Lens Cleaner for",
     "Kinect Sensor with Kinect Adventures!", "Visual Memory Unit - White", "Wii Stand (RVL-017)",
     "amFilm Tempered Screen Protector for Nintendo Switch Lite", "Switch Case Compatible with Nintendo Switch Lite",
+    "Destiny Expansion II: House of Wolves", "Hitman - Upgrade Pack", "Super Smash Bros. Ultimate: Challenger Pack 2",
+    "Skylanders SWAP Force: Rip Tide Character", "Skylanders Giants Triple Pack #6 (Eruptor, Stealth Elf & Terrafin)",
+    "Disney Infinity 3.0 Edition: Pixar's The Good Dinosaur Power Disc Pack", "Minecraft Game Voucher",
+    "Star Wars: The Old Republic 60-Day Pre-paid Time Card", "Wii Hardware Bundle - Black",
+    "McAfee Total Protection 2015 | 3 Devices | PC Key Card", "The Sims 4 - Movie Hangout Stuff",
 ])
 def test_non_games_are_blocked(title):
     assert _NOT_RECOMMENDABLE.search(title)
@@ -18,7 +23,8 @@ def test_non_games_are_blocked(title):
 @pytest.mark.parametrize("title", [
     "Resident Evil: Code Veronica X", "System Shock 2", "Code Vein", "Kingdom Hearts Melody of Memory",
     "SingStar Queen - Stand Alone", "Wii Play with Wii Remote", "Trace Memory", "Code Name: S.T.E.A.M.",
-    "Gran Turismo Sport", "Halo 3",
+    "Gran Turismo Sport", "Halo 3", "Skylanders Giants Starter Pack", "LEGO Dimensions Starter Pack",
+    "Borderlands 2 - 4 Pack", "UNCHARTED Greatest Hits Dual Pack", "Sonic Forces: Bonus Edition",
 ])
 def test_real_games_are_not_blocked(title):
     assert not _NOT_RECOMMENDABLE.search(title)
@@ -32,3 +38,21 @@ def test_real_games_are_not_blocked(title):
 ])
 def test_display_title_budget_lines_and_gift_sets(title, domain, expected):
     assert display_title(title, domain) == expected
+
+
+def test_book_signals():
+    from crossverse.serving.engine import _BOOK_REVIEW, _GUIDE_TITLE
+
+    assert _BOOK_REVIEW.search("Still Foolin' 'Em From Publishers Weekly Avoiding the trappings of memoirs")
+    assert _BOOK_REVIEW.search("Starred Review. Kirkus Reviews calls it moving")
+    assert not _BOOK_REVIEW.search("Persona 5. Includes a hardcover art book and a New York Times bestselling author")
+    assert _GUIDE_TITLE.search("Two Worlds II Official Strategy Guide") and not _GUIDE_TITLE.search("Guide to the Galaxy")
+
+
+def test_reasons_never_name_internal_retrievers():
+    import re
+
+    from crossverse.explain.evidence import SOURCE_REASONS
+
+    internal = re.compile(r"\b(?:semantic|two_tower|als(?:_\w+)?|copref|item_knn|content|popularity)\b")
+    assert not [text for text in SOURCE_REASONS.values() if internal.search(text)]

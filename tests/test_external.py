@@ -43,6 +43,15 @@ def test_year_in_title_is_a_hard_constraint_and_close_years_win():
     assert X.pick_movie("Halloween", 1978, old)[1]["release_date"].startswith("1978")
 
 
+def test_nothing_released_after_the_data_ends():
+    # the Road House DVD on Amazon is the 1989 film, even when the 2024 remake is more popular now
+    cands = [("movie", movie("Road House", "2024-03-08", 9000)), ("movie", movie("Road House", "1989-05-19", 2000))]
+    assert X.pick_movie("Road House", 2006, cands)[1]["release_date"].startswith("1989")
+    assert X.pick_movie("Nosferatu", None, [("movie", movie("Nosferatu", "2024-12-25", 3000))]) is None
+    late = {"id": 2, "name": "Marvel Rivals", "first_release_date": 1733443200, "total_rating_count": 300}  # 2024
+    assert X.pick_game("Marvel Rivals", None, [late]) is None
+
+
 def test_unrelated_titles_do_not_match():
     assert X.pick_movie("Alien", None, [("movie", movie("Alien Nation", "1988-10-07", 900))]) is None
 

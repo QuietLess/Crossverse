@@ -5,17 +5,20 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field
 
 from crossverse import __version__
-from crossverse.config import Settings, get_settings
+from crossverse.config import PROJECT_ROOT, Settings, get_settings
 from crossverse.features.themes import THEMES
 from crossverse.monitoring import metrics as M
 from crossverse.monitoring.registry import ModelRegistry
@@ -25,6 +28,10 @@ from crossverse.serving.storage import SQLStore, make_cache
 log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
+Target = Literal["movie", "game", "film", "tv"]
+# Web UI files. The default fits a source checkout; installed (non-editable) packages, as in the container
+# images, set CROSSVERSE_UI_DIR because PROJECT_ROOT then points into site-packages.
+UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui")
 
 
 # ---------------------------------------------------------------------------------------------
@@ -40,7 +47,8 @@ class ProfileItem(BaseModel):
 class RecommendRequest(BaseModel):
     liked: list[ProfileItem] = Field(default_factory=list)
     disliked: list[str] = Field(default_factory=list, description="item_ids or titles")
-    target_domain: Domain | None = Field(None, description="movie, game, or null for both")
+    target_domain: Target | None = Field(None, description="game, film (movies only), tv (series only), "
+                                                     "movie (films and TV), or null for everything")
     k: int = Field(10, ge=1, le=100)
     preferences: list[str] = Field(default_factory=list, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
     free_text: str = Field("", max_length=500, description="cold-start free text, e.g. 'dark sci-fi about AI'")
@@ -81,6 +89,7 @@ class RecItem(BaseModel):
     year: int | None
     evidence: dict[str, Any]
     image: str | None = Field(None, description="cover image URL (Amazon product image), if known")
+    kind: str = Field("", description="movie, tv or game")
 
 
 class RecommendResponse(BaseModel):
@@ -95,6 +104,12 @@ class RecommendResponse(BaseModel):
     candidate_count: int
     latency_ms: float
     items: list[RecItem]
+    # films / series / games of the same franchise as the liked titles (adaptations, tie-ins); not ranked
+    same_universe: list[dict[str, Any]] = Field(default_factory=list)
+    # titles newer than the review data, closest in story to the liked titles; not ranked
+    new_releases: list[dict[str, Any]] = Field(default_factory=list)
+    # picked new release -> the catalog titles standing in for it in the ranked list
+    stand_ins: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -120,6 +135,12 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
     engine.search("warmup")  # build the title prefix index before the first request
+    # Build the other lazy pieces too (eligibility masks, the sentence model for mood queries) so the
+    # first visitor of a fresh container (Cloud Run cold start) doesn't wait seconds for them.
+    engine.compilations()
+    if len(engine.catalog):
+        engine.recommend([(str(engine.catalog.item_ids[0]), 5.0)], k=3, explain=False, taste=0.5)
+        engine.recommend([], k=3, explain=False, free_text="warm up")
     order = engine.popularity.argsort().argsort()
     state.pop_pct = order / max(len(order) - 1, 1)
     state.quality = M.QualityTracker(len(engine.catalog))
@@ -178,7 +199,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
                 M.UNKNOWN_ITEMS.inc()
                 continue
             pairs.append((iid, p.rating))
-            resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": p.rating, "input": p.item})
+            resolved.append({**(eng.describe(iid) or {}), "rating": p.rating, "input": p.item})
         for d in disliked:
             iid, alternatives = eng.resolve_detail(d, source_domain)
             if alternatives:
@@ -188,7 +209,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
                 M.UNKNOWN_ITEMS.inc()
                 continue
             dis.append(iid)
-            resolved.append({**eng.item_dict(eng.catalog.index[iid]), "rating": 1.0, "input": d})
+            resolved.append({**(eng.describe(iid) or {}), "rating": 1.0, "input": d})
         return pairs, dis, resolved, unresolved, ambiguous
 
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
@@ -200,12 +221,19 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         cached = state.cache.get(key)
         if cached:
             return RecommendResponse(**cached)
-        res: EngineResult = eng.recommend(pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste)
+        # New releases aren't in the trained model: their catalog stand-ins take their place in the ranking.
+        ranked_pairs, stand_ins = eng.expand_profile(pairs)
+        res: EngineResult = eng.recommend(ranked_pairs, dis, target, k, prefs, free_text, exclude, explain, diversify,
+                                          taste)
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
                                  resolved_profile=resolved, unresolved=unresolved,
                                  suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
-                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items)
+                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
+                                 same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude),
+                                 new_releases=eng.new_releases([i for i, _ in pairs], target,
+                                                               exclude_ids=[*(exclude or []), *dis]),
+                                 stand_ins=stand_ins)
         state.store.log_recommendations([{**i.model_dump(), "model_version": res.model_version, "request_mode": mode}
                                          for i in items])
         for i in items:
@@ -268,10 +296,10 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
 
     @app.get("/items/{item_id}", tags=["items"])
     def item(item_id: str) -> dict[str, Any]:
-        eng = engine_or_503()
-        if item_id not in eng.catalog.index:
+        found = engine_or_503().describe(item_id)
+        if found is None:
             raise HTTPException(404, "unknown item")
-        return eng.item_dict(eng.catalog.index[item_id])
+        return found
 
     @app.get("/themes", tags=["items"])
     def themes() -> list[str]:
@@ -333,5 +361,12 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
     @app.get("/metrics", tags=["ops"])
     def metrics() -> Response:
         return Response(generate_latest(M.REGISTRY), media_type=CONTENT_TYPE_LATEST)
+
+    # Web UI (apps/ui: static HTML/JS that calls this API from the same origin).
+    # Mounted after every API route, so "/" serves the app (index.html, app.js, ...) and API paths still
+    # win; /ui/ keeps older shared links working.
+    if UI_DIR.exists():
+        app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
+        app.mount("/", StaticFiles(directory=UI_DIR, html=True), name="ui-root")
 
     return app

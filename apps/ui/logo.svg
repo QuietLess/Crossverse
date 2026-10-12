@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="CrossVerse">
+  <title>CrossVerse</title>
+  <defs>
+    <linearGradient id="cv-film" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffc35c"/>
+      <stop offset="1" stop-color="#ff6a3d"/>
+    </linearGradient>
+    <linearGradient id="cv-game" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3be8ff"/>
+      <stop offset="1" stop-color="#5b7cff"/>
+    </linearGradient>
+    <radialGradient id="cv-core" cx="0.5" cy="0.5" r="0.6">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="0.45" stop-color="#d36bff"/>
+      <stop offset="1" stop-color="#8a5cff"/>
+    </radialGradient>
+    <clipPath id="cv-reel"><circle cx="24" cy="32" r="17"/></clipPath>
+  </defs>
+  <!-- movies: a film reel -->
+  <circle cx="24" cy="32" r="17" fill="none" stroke="url(#cv-film)" stroke-width="5"/>
+  <g fill="url(#cv-film)">
+    <circle cx="19.5" cy="24" r="2.8"/><circle cx="14.5" cy="32" r="2.8"/><circle cx="19.5" cy="40" r="2.8"/>
+  </g>
+  <!-- games: a rounded console button with a d-pad -->
+  <rect x="25" y="15" width="34" height="34" rx="11" fill="none" stroke="url(#cv-game)" stroke-width="5"/>
+  <path d="M44 25.5v13M37.5 32h13" stroke="url(#cv-game)" stroke-width="4" stroke-linecap="round"/>
+  <!-- the crossover: where the two worlds overlap -->
+  <rect x="25" y="15" width="34" height="34" rx="11" fill="url(#cv-core)" clip-path="url(#cv-reel)" opacity="0.95"/>
+  <circle cx="34.5" cy="31" r="2.2" fill="#fff"/>
+</svg>

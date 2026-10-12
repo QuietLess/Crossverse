@@ -125,3 +125,32 @@ def test_promotion_gate_and_guardrails(tmp_path):
     # genuine improvement -> promoted
     reg.write_manifest("d", {"test_metrics": {**base, "cross_domain_ndcg@10": 0.033}})
     assert reg.promote("d")[0] and reg.production_version() == "d"
+
+
+def test_web_ui_is_served(client):
+    for prefix in ("/", "/ui/"):  # the root serves the app; /ui/ keeps older links working
+        page = client.get(prefix)
+        assert page.status_code == 200 and "CrossVerse" in page.text
+        for asset in ("app.js", "style.css", "logo.svg"):
+            assert client.get(f"{prefix}{asset}").status_code == 200
+    assert client.get("/health").json()["status"] == "ok"  # API routes still win over the static mount
+    assert client.get("/docs").status_code == 200
+
+
+def test_film_and_tv_targets(client, trained):
+    engine, _, _ = trained
+    title = engine.catalog.items.sort_values("popularity").iloc[-1]["title"]
+    for target in ("film", "tv", "movie", "game"):
+        r = client.post("/recommend", json={"liked": [{"item": title}], "target_domain": target, "k": 5})
+        assert r.status_code == 200, r.text
+        kinds = {i["kind"] for i in r.json()["items"]}
+        expected = {"film": {"movie"}, "tv": {"tv"}, "movie": {"movie", "tv"}, "game": {"game"}}[target]
+        assert kinds <= expected
+
+
+def test_single_unified_pick(client, trained):
+    # k=1 for "everything" leaves one domain a quota of 0; that must not crash
+    engine, _, _ = trained
+    r = client.post("/recommend", json={"liked": [{"item": _titles(engine, "movie", 1)[0]}], "k": 1})
+    assert r.status_code == 200, r.text
+    assert len(r.json()["items"]) == 1
