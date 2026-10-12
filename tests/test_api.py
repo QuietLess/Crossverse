@@ -154,3 +154,20 @@ def test_single_unified_pick(client, trained):
     r = client.post("/recommend", json={"liked": [{"item": _titles(engine, "movie", 1)[0]}], "k": 1})
     assert r.status_code == 200, r.text
     assert len(r.json()["items"]) == 1
+
+
+def test_letterboxd_import_is_strict(client, trained):
+    engine, _, _ = trained
+    items = engine.catalog.items
+    movie = items[items["domain"] == "movie"].sort_values("popularity", ascending=False).iloc[0]
+    year = int(movie["year"]) if movie["year"] and movie["year"] > 0 else None
+    films = [{"name": movie["title"], "year": year, "rating": 4.5},
+             {"name": movie["title"], "year": (year or 2000) + 30, "rating": 5},  # a remake decades later: no
+             {"name": "No Such Film Anywhere", "year": 2011, "rating": 5},
+             {"name": movie["title"][:-1] + "x", "rating": 3}]  # a near-miss title: no
+    r = client.post("/import/letterboxd", json={"films": films})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [m["item_id"] for m in body["matched"]] == [movie["item_id"]]
+    assert body["matched"][0]["member_rating"] == 4.5 and body["total"] == 4
+    assert len(body["unmatched"]) == 3

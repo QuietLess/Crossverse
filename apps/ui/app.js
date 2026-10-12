@@ -512,6 +512,85 @@ async function openDetail(it) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// ---------------------------------------------------------------------------------------------
+// Letterboxd import: the member's own data export (.zip or ratings.csv), read in the browser
+// ---------------------------------------------------------------------------------------------
+const LOVED_STARS = 4, DISLIKED_STARS = 1.5, MAX_LOVED = 10, MAX_DISLIKED = 3;
+
+/** RFC 4180 CSV: quoted fields may hold commas, quotes ("") and line breaks. */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], field = "", quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') { field += '"'; i++; } else if (c === '"') quoted = false; else field += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") { row.push(field); field = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); rows.push(row); row = []; field = "";
+    } else field += c;
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows.filter((r) => r.some((x) => x.trim()));
+}
+
+/** One file out of a .zip, via the central directory (sizes there are always filled in). */
+async function unzipFile(blob, wanted) {
+  const buf = new DataView(await blob.arrayBuffer());
+  let end = buf.byteLength - 22;
+  while (end >= 0 && buf.getUint32(end, true) !== 0x06054b50) end--;
+  if (end < 0) throw new Error("not a zip file");
+  let at = buf.getUint32(end + 16, true);
+  const entries = {};
+  for (let n = buf.getUint16(end + 10, true); n > 0; n--) {
+    const nameLen = buf.getUint16(at + 28, true);
+    const name = new TextDecoder().decode(new Uint8Array(buf.buffer, at + 46, nameLen));
+    entries[name.split("/").pop()] = { method: buf.getUint16(at + 10, true), size: buf.getUint32(at + 20, true), local: buf.getUint32(at + 42, true) };
+    at += 46 + nameLen + buf.getUint16(at + 30, true) + buf.getUint16(at + 32, true);
+  }
+  const e = wanted.map((w) => entries[w]).find(Boolean);
+  if (!e) return null;
+  const start = e.local + 30 + buf.getUint16(e.local + 26, true) + buf.getUint16(e.local + 28, true);
+  const data = new Blob([new Uint8Array(buf.buffer, start, e.size)]);
+  if (e.method === 0) return data.text();
+  return new Response(data.stream().pipeThrough(new DecompressionStream("deflate-raw"))).text();
+}
+
+async function importLetterboxd(file) {
+  try {
+    const text = /\.zip$/i.test(file.name) ? await unzipFile(file, ["ratings.csv", "watched.csv"]) : await file.text();
+    if (!text) throw new Error("no ratings.csv in that zip");
+    const [head, ...rows] = parseCsv(text.replace(/^\uFEFF/, ""));
+    const col = (name) => head.findIndex((h) => h.trim().toLowerCase() === name);
+    const [ni, yi, ri] = [col("name"), col("year"), col("rating")];
+    if (ni < 0) throw new Error("expected Letterboxd's ratings.csv (a Name column)");
+    const films = rows.filter((r) => r[ni]).slice(0, 5000)
+      .map((r) => ({ name: r[ni], year: Number(r[yi]) || null, rating: ri >= 0 && r[ri] ? Number(r[ri]) : null }));
+    toast(`Matching ${films.length} films…`);
+    const res = await api("/import/letterboxd", { body: { films } });
+    const rated = res.matched.filter((m) => m.member_rating != null);
+    const loved = (rated.length ? rated.filter((m) => m.member_rating >= LOVED_STARS) : res.matched).slice(0, MAX_LOVED);
+    const disliked = rated.filter((m) => m.member_rating <= DISLIKED_STARS).slice(-MAX_DISLIKED);
+    const had = new Set(state.picks.map((p) => p.item_id));
+    const fresh = [...loved.map((m) => [m, true]), ...disliked.map((m) => [m, false])].filter(([m]) => !had.has(m.item_id));
+    if (!fresh.length) return toast(`Found ${res.matched.length} of ${res.total} films, but none rated ${LOVED_STARS}★ or more.`);
+    fresh.forEach(([m, liked]) => state.picks.push({ ...m, liked }));
+    if (!state.toTouched) state.to = "game";
+    changed();
+    const nLoved = fresh.filter(([, liked]) => liked).length, nBad = fresh.length - nLoved;
+    toast(`Imported ${nLoved} favourite${nLoved === 1 ? "" : "s"}${nBad ? ` and ${nBad} dislike${nBad === 1 ? "" : "s"}` : ""} (${res.matched.length} of ${res.total} films found)`);
+  } catch (e) {
+    toast(`Letterboxd import failed: ${e.message}`);
+  }
+}
+$("#letterboxd-file").addEventListener("change", (e) => {
+  const file = e.target.files?.[0];
+  e.target.value = "";  // the same file can be picked again
+  if (file) importLetterboxd(file);
+});
+
 function changed() {
   renderPicks();
   renderControls();

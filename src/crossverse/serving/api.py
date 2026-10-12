@@ -69,6 +69,16 @@ class DomainRequest(BaseModel):
                          "ranker), 1 = similar story & setting among well-liked titles; in between, a blend")
 
 
+class LetterboxdFilm(BaseModel):
+    name: str = Field(..., max_length=300)
+    year: int | None = Field(None, ge=1870, le=2100)
+    rating: float | None = Field(None, ge=0, le=5, description="Letterboxd stars, 0.5-5")
+
+
+class LetterboxdImport(BaseModel):
+    films: list[LetterboxdFilm] = Field(..., max_length=5000, description="rows of ratings.csv from a Letterboxd export")
+
+
 class FeedbackRequest(BaseModel):
     item_id: str
     event: Literal["like", "dislike", "click", "save", "skip"]
@@ -302,6 +312,22 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         if found is None:
             raise HTTPException(404, "unknown item")
         return found
+
+    @app.post("/import/letterboxd", tags=["items"])
+    def import_letterboxd(req: LetterboxdImport) -> dict[str, Any]:
+        """Match a Letterboxd export (ratings.csv rows) to catalog films: same title, year within one.
+        Returns the matches with the member's rating, best first, and the names that found nothing."""
+        eng = engine_or_503()
+        matched, unmatched, seen = [], [], set()
+        for f in req.films:
+            hit = eng.match_title(f.name, f.year)
+            if hit is None:
+                unmatched.append(f.name)
+            elif hit["item_id"] not in seen:
+                seen.add(hit["item_id"])
+                matched.append({**hit, "member_rating": f.rating, "input": f.name})
+        matched.sort(key=lambda m: -(m["member_rating"] or 0))
+        return {"matched": matched, "unmatched": unmatched, "total": len(req.films)}
 
     @app.get("/themes", tags=["items"])
     def themes() -> list[str]:
