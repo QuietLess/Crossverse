@@ -282,3 +282,61 @@ def test_a_broken_live_version_does_not_block_the_next_publish(tmp_path):
     (tmp_path / "20000101T000000-00").mkdir()  # a version a killed job never finished
     version = S.publish(index_of(["Show C", "Show D"]), tmp_path)
     assert S.load_published(tmp_path)[0] == version
+
+
+def test_publish_leaves_another_runs_unfinished_version_alone(tmp_path):
+    import os
+    import time
+
+    S.publish(index_of(["Show A", "Show B"]), tmp_path)
+    running = tmp_path / "29990101T000000-07"  # another execution is still writing this one
+    running.mkdir()
+    stale = tmp_path / "20000101T000000-00"  # a job killed hours ago never finished this one
+    stale.mkdir()
+    old = time.time() - 3 * 3600
+    os.utime(stale, (old, old))
+    S.publish(index_of(["Show C", "Show D"]), tmp_path)
+    assert running.exists() and not stale.exists()
+
+
+def test_a_read_error_is_retried_at_the_next_check(trained, small_settings, tmp_path, monkeypatch):
+    engine, _, _ = trained
+    monkeypatch.setitem(engine.__dict__, "new_releases_", None)
+    serving = dataclasses.replace(small_settings.serving, new_releases_dir=str(tmp_path),
+                                  new_releases_check_seconds=0)
+    settings = dataclasses.replace(small_settings, serving=serving)
+    S.publish(index_of(["Zqx Gamma Show"], len(engine.catalog)), tmp_path, engine=engine)
+    real, calls = S.load_published, []
+
+    def flaky(*a, **kw):  # the mounted bucket fails one read
+        calls.append(1)
+        if len(calls) == 1:
+            raise OSError("transport endpoint is not connected")
+        return real(*a, **kw)
+
+    monkeypatch.setattr(S, "load_published", flaky)
+    with TestClient(create_app(settings, engine)) as client:
+        found = client.get("/items/search", params={"q": "Zqx Gamma Show"}).json()
+        assert found and found[0]["title"] == "Zqx Gamma Show"
+
+
+@pytest.mark.parametrize("header", ["nan", "-5", "Wed, 21 Oct 2026 07:28:00 GMT", "100000"])
+def test_odd_retry_after_values_are_waited_out_safely(monkeypatch, header):
+    import requests
+
+    from crossverse.data import external as X
+
+    waits, answers = [], []
+
+    def fake_request(method, url, **kw):
+        r = requests.Response()
+        r.status_code = 429 if not answers else 200
+        r.headers["Retry-After"] = header
+        r._content = b'{"ok": true}'
+        answers.append(r)
+        return r
+
+    monkeypatch.setattr(X.requests, "request", fake_request)
+    monkeypatch.setattr(X.time, "sleep", waits.append)
+    assert X._request("GET", "https://example.test/x", X.RateLimiter(1000)) == {"ok": True}
+    assert all(0 <= w <= 120 for w in waits) and waits
