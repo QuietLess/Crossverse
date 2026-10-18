@@ -12,14 +12,14 @@
 | 2026-10-18 | TMDB logo in the footer (TMDB terms §3); scheduled new-release refresh with AniList anime as a tag, published index reloaded by the service (code and dry-run deploy script; cloud resources not yet created) |
 | 2026-10-18 | API hardening: bounded request sizes and title-lookup work, one metrics label for unmatched paths, per-request fields on cache hits; SPEC/ROADMAP |
 
-## Open decision: TMDB terms
+## TMDB terms: permission granted
 
 TMDB's API terms (updated 2023-10-20) prohibit using TMDB content in, "including for training", a
-machine-learning or AI application (§1.C), count AI training as commercial use (§2.A), cap caching at
-6 months (§1.C) and require the TMDB logo (§3; the app shows the text notice but no logo). Models v12+
-use TMDB metadata in training, and new releases are matched by embeddings of TMDB overviews. Options:
-ask TMDB for permission, keep TMDB for display only (scores, listings, links) and retrain without it,
-or replace it with sources whose terms allow this use. Owner to decide; not legal advice.
+machine-learning or AI application (§1.C) unless TMDB agrees, cap caching at 6 months (§1.C) and require
+the TMDB logo (§3). Models v12+ use TMDB metadata in training, and new releases are matched by embeddings
+of TMDB overviews. **2026-10-18: the owner reports that TMDB gave permission for this use**; keep TMDB's
+written answer with the project records. The logo is in the footer, and the scheduled refresh re-fetches
+TMDB data on every run. Re-check the permission if the project becomes commercial.
 
 ## Next (proposed, not yet agreed)
 
