@@ -112,3 +112,26 @@ def test_min_support_drops_single_fan_pairs():
 
     knn = ItemKNNRetriever(min_support=2).fit(data).score(h)
     assert knn[rare] == 0 and knn[hit] > 0
+
+
+def test_suggest_scores_a_bounded_number_of_candidates(trained, monkeypatch):
+    # A long query of common words shares a prefix with most of the catalog; string similarity is only
+    # computed for a bounded shortlist, so one unknown title can't cost seconds of CPU.
+    import difflib
+
+    from crossverse.serving import engine as engine_module
+
+    engine, _, _ = trained
+    monkeypatch.setattr(engine_module, "SUGGEST_MAX_CANDIDATES", 10)
+    calls = []
+    real = difflib.SequenceMatcher
+
+    class Counting(real):
+        def __init__(self, *a, **kw):
+            calls.append(1)
+            super().__init__(*a, **kw)
+
+    monkeypatch.setattr(difflib, "SequenceMatcher", Counting)
+    words = " ".join(" ".join(engine._norm_titles[:200]).split()[:300])
+    engine.suggest(words)
+    assert 0 < len(calls) <= 10
