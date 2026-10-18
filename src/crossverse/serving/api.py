@@ -9,13 +9,13 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from crossverse import __version__
 from crossverse.config import PROJECT_ROOT, Settings, get_settings
@@ -29,6 +29,15 @@ log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
 Target = Literal["movie", "game", "film", "tv"]
+# Request size limits. The service is public, so every list and string is bounded before title matching
+# (fuzzy "did you mean" per unknown title) or storage happens. The web UI sends far less: hand-picked
+# titles plus at most 10 imported favourites.
+MAX_PROFILE = 100
+MAX_EXCLUDE = 1000
+MAX_CONTEXT_BYTES = 4096
+Title = Annotated[str, Field(max_length=300)]
+ShortText = Annotated[str, Field(max_length=100)]
+UserId = Annotated[str, Field(max_length=128)]
 # Web UI files. The default fits a source checkout; installed (non-editable) packages, as in the container
 # images, set CROSSVERSE_UI_DIR because PROJECT_ROOT then points into site-packages.
 UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui")
@@ -38,31 +47,31 @@ UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui
 # Schemas
 # ---------------------------------------------------------------------------------------------
 class ProfileItem(BaseModel):
-    item: str = Field(..., description="catalog item_id or a title to resolve", examples=["Blade Runner 2049"])
+    item: Title = Field(..., description="catalog item_id or a title to resolve", examples=["Blade Runner 2049"])
     rating: float = Field(5.0, ge=1, le=5)
     domain: Domain | None = Field(None, description="disambiguate titles that exist as both a movie and a game "
                                                     "(or prefix the title: 'game: Batman Begins')")
 
 
 class RecommendRequest(BaseModel):
-    liked: list[ProfileItem] = Field(default_factory=list)
-    disliked: list[str] = Field(default_factory=list, description="item_ids or titles")
+    liked: list[ProfileItem] = Field(default_factory=list, max_length=MAX_PROFILE)
+    disliked: list[Title] = Field(default_factory=list, max_length=MAX_PROFILE, description="item_ids or titles")
     target_domain: Target | None = Field(None, description="game, film (movies only), tv (series only), "
                                                      "movie (films and TV), or null for everything")
     k: int = Field(10, ge=1, le=100)
-    preferences: list[str] = Field(default_factory=list, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
+    preferences: list[ShortText] = Field(default_factory=list, max_length=50, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
     free_text: str = Field("", max_length=500, description="cold-start free text, e.g. 'dark sci-fi about AI'")
-    exclude: list[str] = Field(default_factory=list)
+    exclude: list[Title] = Field(default_factory=list, max_length=MAX_EXCLUDE)
     explain: bool = True
     diversify: bool = True
-    user_id: str | None = None
+    user_id: UserId | None = None
     taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
                          "ranker), 1 = similar story & setting among well-liked titles; in between, a blend")
 
 
 class DomainRequest(BaseModel):
-    liked: list[ProfileItem]
-    disliked: list[str] = Field(default_factory=list)
+    liked: list[ProfileItem] = Field(..., max_length=MAX_PROFILE)
+    disliked: list[Title] = Field(default_factory=list, max_length=MAX_PROFILE)
     k: int = Field(10, ge=1, le=100)
     explain: bool = True
     taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
@@ -80,11 +89,18 @@ class LetterboxdImport(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    item_id: str
+    item_id: Title
     event: Literal["like", "dislike", "click", "save", "skip"]
-    recommendation_id: str | None = None
-    user_id: str | None = None
-    context: dict[str, Any] = Field(default_factory=dict)
+    recommendation_id: ShortText | None = None
+    user_id: UserId | None = None
+    context: dict[ShortText, Any] = Field(default_factory=dict, max_length=50)
+
+    @field_validator("context")
+    @classmethod
+    def _small_context(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(v, default=str)) > MAX_CONTEXT_BYTES:
+            raise ValueError(f"context is larger than {MAX_CONTEXT_BYTES} bytes as JSON")
+        return v
 
 
 class RecItem(BaseModel):
@@ -179,7 +195,6 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
 
     @app.middleware("http")
     async def metrics_mw(request: Request, call_next):
-        route = request.scope.get("route")
         t = time.perf_counter()
         status = "500"
         try:
@@ -187,8 +202,11 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             status = str(response.status_code)
             return response
         finally:
+            # API routes are labelled by their template (/similar/{domain}/{item_id}). Anything else (the
+            # static UI, 404s from bots probing random URLs) shares one label: a raw URL would add a new
+            # time series per distinct path, forever.
             route = request.scope.get("route")
-            path = getattr(route, "path", request.url.path)
+            path = getattr(route, "path", "<unmatched>")
             if path != "/metrics":
                 M.LATENCY.labels(path).observe(time.perf_counter() - t)
                 M.REQUESTS.labels(path, status).inc()
