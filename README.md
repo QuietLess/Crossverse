@@ -79,11 +79,11 @@ chance, and *Kingsglaive* ↔ *Final Fantasy XV* 50×.
 | Scores | Cards show public scores: TMDB audience rating for films and series, IGDB critic (and player) scores for games, only with enough votes behind them. Display only, never a ranking input. `python pipelines/scores.py` then `python scripts/build_scores.py` |
 | Letterboxd import | "Import my Letterboxd ratings" reads the member's own data export (.zip or ratings.csv) in the browser and sends only names, years and stars to `/import/letterboxd`, which matches strictly (same title, year within one). 4★+ become favourites, ≤1.5★ dislikes. No Letterboxd API involved (theirs isn't open to recommendation projects). |
 | Explainability (§7) | Deterministic evidence objects + template verbalisation that only states what clears a threshold |
-| Serving (§8–9) | FastAPI: `/recommend`, `/recommend/movie-to-game`, `/recommend/game-to-movie`, `/similar/{domain}/{id}`, `/feedback`, `/explain/{id}`, `/health`, `/metrics`, `/items/search`, `/admin/stats`; "did you mean" suggestions for unknown titles |
+| Serving (§8–9) | FastAPI: `/recommend`, `/recommend/movie-to-game`, `/recommend/game-to-movie`, `/similar/{domain}/{id}`, `/feedback`, `/explain/{id}`, `/health`, `/metrics`, `/items/search`, `/admin/stats`; "did you mean" suggestions for unknown titles; request sizes bounded (≤100 liked/disliked titles, ≤300-char titles, ≤4 KB feedback context) |
 | Storage | Postgres (or SQLite locally) for the recommendation log + feedback, Redis (or in-process) cache; integration-tested against real servers |
 | MLOps (§8, §12) | Versioned registry with dataset fingerprints, run tracking (MLflow if installed, JSON always), promotion gate on cross-domain NDCG + per-task guardrails that refuses cross-dataset comparisons, Prometheus metrics + provisioned Grafana dashboard |
 | Demo (§13) | Streamlit app (five modes + evidence panel + admin view), CLI |
-| CI (§12) | GitHub Actions with pinned `constraints.txt`: ruff, mypy, pytest (78 tests incl. Postgres/Redis integration via service containers), synthetic end-to-end train→evaluate→gate, gitleaks, Docker build + API smoke test |
+| CI (§12) | GitHub Actions with pinned `constraints.txt`: ruff, mypy, pytest (289 tests incl. Postgres/Redis integration via service containers), synthetic end-to-end train→evaluate→gate, gitleaks, Docker build + API smoke test |
 
 What was verified, and how (including the Compose stack run natively because Docker is unavailable
 on the dev machine), is in [docs/verification.md](docs/verification.md).
@@ -193,6 +193,12 @@ reports/                      per-version benchmarks, significance, error analys
   re-running `pipelines/new_releases.py`), but nobody in the data has rated them: they are matched by story
   and franchise only, never by "fans like you", and a new title picked as a favourite is approximated
   by its closest catalog titles.
+* **The public deployment keeps no durable log.** Cloud Run runs without a database URL, so the
+  recommendation log and feedback go to SQLite inside the container and are lost when it scales to
+  zero; with two instances, `/explain/{id}` can miss a recommendation served by the other one. Set
+  `CROSSVERSE_DATABASE_URL` to a Postgres instance to keep them (a recurring cost).
+* `/admin/stats` and `/metrics` are unauthenticated: they expose aggregate model metrics and feedback
+  counts, nothing per user.
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
   catalog scale.
 

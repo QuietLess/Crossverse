@@ -3,6 +3,21 @@
 What has been checked, how, and what could not be checked on the development machine (Windows 11,
 no Docker). Dates: 2026-10-05.
 
+## Re-run 2026-10-18 (macOS, Python 3.12, `constraints.txt` versions)
+
+| check | result |
+|---|---|
+| `ruff check src tests pipelines apps scripts` | All checks passed |
+| `mypy src/crossverse --ignore-missing-imports` | no issues in 42 source files |
+| `pytest` (no Postgres/Redis) | 286 passed, 3 skipped (the storage-backend integration tests) |
+
+Found and fixed: requests that match no API route were labelled with their raw URL in Prometheus, so
+50 probes of random paths created 50 time series (reproduced against the app with the synthetic
+fixture); they now share `<unmatched>`. Request lists, titles and feedback context had no size limits
+(a 2 MB `context` was stored); they are now bounded and rejected with 422.
+
+The tables below are the original Windows run (2026-10-05).
+
 ## Code quality and CI
 
 | check | how | result |
