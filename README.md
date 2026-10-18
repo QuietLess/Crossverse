@@ -197,6 +197,9 @@ reports/                      per-version benchmarks, significance, error analys
   recommendation log and feedback go to SQLite inside the container and are lost when it scales to
   zero; with two instances, `/explain/{id}` can miss a recommendation served by the other one. Set
   `CROSSVERSE_DATABASE_URL` to a Postgres instance to keep them (a recurring cost).
+* **No rate limiting.** Each request is bounded (sizes and lookup work), but nothing limits how many
+  requests one client sends; on Cloud Run the SQLite log lives in the container's memory, so a flood of
+  `/feedback` or `/recommend` calls grows it until the instance runs out of memory (2 GiB) and restarts.
 * `/admin/stats` and `/metrics` are unauthenticated: they expose aggregate model metrics and feedback
   counts, nothing per user.
 * Vector search is brute force in-process: fine at 43k items. pgvector/Qdrant are the next step at
