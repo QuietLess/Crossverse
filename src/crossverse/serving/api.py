@@ -181,9 +181,10 @@ def reload_new_releases(force: bool = False) -> None:
         version = new_releases.current_version(root)
         if version is None or version == state.fresh_seen:
             return
-        state.fresh_seen = version
-        version, index = new_releases.load_published(root, engine=state.engine)
+        loaded, index = new_releases.load_published(root, engine=state.engine)
+        state.fresh_seen = version  # read (loaded or rejected); a read error above is retried next check
         if index is not None:
+            version = loaded
             state.engine.attach_new_releases(index)
             state.fresh_version = version
             log.info("new releases %s: %d titles", version, len(index))

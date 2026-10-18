@@ -39,6 +39,7 @@ STAND_IN_RATING = 4.0  # a little below a real favourite (5)
 KIDS_GENRES = {"Kids", "Family"}  # TMDB genres; kept only for profiles with family titles
 KIDS_PENALTY = 0.08  # cosine similarity
 KEEP_VERSIONS = 3  # published index versions kept (the live one and two to roll back to)
+UNFINISHED_AFTER = 2 * 3600  # seconds: a version folder without graph.json this old is a dead run's (job timeout 1 h)
 MAX_SHRINK = 0.5  # refuse to publish an index under half the size of the live one (an outage, an expired key)
 _VERSION = re.compile(r"^\d{8}T\d{6}-\d{2}$")
 
@@ -232,10 +233,12 @@ def publish(index: NewReleaseIndex, root: Path, force: bool = False, engine: Any
     pointer = root / "CURRENT.tmp"
     pointer.write_text(version, encoding="utf-8")
     pointer.replace(root / "CURRENT")
-    # Keep the newest complete versions (graph.json is written last); drop older and unfinished ones.
+    # Keep the newest complete versions (graph.json is written last); drop older ones, and unfinished ones
+    # left by a dead run (not one another execution is still writing).
     versions = sorted(p for p in root.iterdir() if p.is_dir() and _VERSION.match(p.name) and p.name != version)
     complete = [p for p in versions if (p / "graph.json").exists()]
-    for old in [p for p in versions if p not in complete] + complete[:max(len(complete) - KEEP_VERSIONS + 1, 0)]:
+    dead = [p for p in versions if p not in complete and time.time() - p.stat().st_mtime > UNFINISHED_AFTER]
+    for old in dead + complete[:max(len(complete) - KEEP_VERSIONS + 1, 0)]:
         for f in old.iterdir():
             f.unlink()
         old.rmdir()

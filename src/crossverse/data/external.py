@@ -103,7 +103,7 @@ def _request(method: str, url: str, limiter: RateLimiter, attempts: int = 6, **k
                 wait = float(r.headers.get("Retry-After", 2**attempt))
             except ValueError:  # an HTTP date
                 wait = 2**attempt
-            time.sleep(min(wait, 120))
+            time.sleep(min(max(wait, 0), 120) if math.isfinite(wait) else 2**attempt)
             continue
         if r.status_code == 404:
             return None
