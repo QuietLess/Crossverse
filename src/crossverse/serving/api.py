@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +24,7 @@ from crossverse.config import PROJECT_ROOT, Settings, get_settings
 from crossverse.features.themes import THEMES
 from crossverse.monitoring import metrics as M
 from crossverse.monitoring.registry import ModelRegistry
+from crossverse.serving import new_releases
 from crossverse.serving.engine import CrossVerseEngine, EngineResult
 from crossverse.serving.storage import SQLStore, make_cache
 
@@ -153,9 +155,40 @@ class State:
     quality: M.QualityTracker
     pop_pct: np.ndarray
     loaded_at: float = 0.0
+    fresh_version: str | None = None  # published new-release index in use (None: the model's own)
+    fresh_checked: float = 0.0
 
 
 state = State()
+_fresh_lock = threading.Lock()
+
+
+def reload_new_releases(force: bool = False) -> None:
+    """Swap in a newly published new-release index (CROSSVERSE_NEW_RELEASES_DIR), checking at most every
+    new_releases_check_seconds. A missing or unreadable version keeps the index in use."""
+    serving = state.settings.serving
+    if not serving.new_releases_dir or state.engine is None:
+        return
+    now = time.monotonic()
+    if not force and now - state.fresh_checked < serving.new_releases_check_seconds:
+        return
+    if not _fresh_lock.acquire(blocking=False):  # another request is already checking
+        return
+    try:
+        state.fresh_checked = now
+        root = Path(serving.new_releases_dir)
+        version = new_releases.current_version(root)
+        if version is None or version == state.fresh_version:
+            return
+        version, index = new_releases.load_published(root)
+        if index is not None:
+            state.engine.attach_new_releases(index)
+            state.fresh_version = version
+            log.info("new releases %s: %d titles", version, len(index))
+    except Exception:
+        log.exception("new releases not reloaded; keeping %s", state.fresh_version or "the model's own")
+    finally:
+        _fresh_lock.release()
 
 
 def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> None:
@@ -164,6 +197,8 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         registry = ModelRegistry(settings.serving.artifacts_dir)
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
+    state.fresh_version, state.fresh_checked = None, 0.0
+    reload_new_releases(force=True)
     engine.search("warmup")  # build the title prefix index before the first request
     engine.match_title("warmup")  # and the exact-title table (Letterboxd import)
     # Build the other lazy pieces too (eligibility masks, the sentence model for mood queries) so the
@@ -217,6 +252,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
     def engine_or_503() -> CrossVerseEngine:
         if state.engine is None:
             raise HTTPException(503, "model not loaded")
+        reload_new_releases()
         return state.engine
 
     def resolve_profile(eng: CrossVerseEngine, liked: list[ProfileItem], disliked: list[str],
@@ -254,7 +290,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
                 free_text="", exclude=None, explain=True, diversify=True,
                 ambiguous=None, taste=0.0) -> RecommendResponse:
         key = "rec:" + hashlib.sha1(json.dumps(
-            [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste],
+            [eng.version, state.fresh_version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste],
             sort_keys=True, default=str).encode()).hexdigest()
         # The key covers what resolved; what this request typed (unknown titles, inputs) is its own.
         per_request = {"resolved_profile": resolved, "unresolved": unresolved,
@@ -396,6 +432,8 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             "index": {"type": "in-process dense (numpy)", "dim": int(eng.content.embeddings_.shape[1])} if eng else None,
             "database": {"backend": state.store.backend, "ok": db_ok},
             "cache": {"backend": getattr(state.cache, "backend", "?"), "ok": cache_ok},
+            "new_releases": {"version": state.fresh_version, "titles": len(eng.fresh) if eng and eng.fresh else 0,
+                             "fetched_at": getattr(eng.fresh, "fetched_at", None) if eng else None},
         }
 
     @app.get("/admin/stats", tags=["ops"])

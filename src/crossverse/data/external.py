@@ -132,6 +132,27 @@ class TMDB:
         return self.get(f"{kind}/{tmdb_id}", append_to_response="keywords")
 
 
+class AniList:
+    """AniList GraphQL API (anime), no key. Its terms (docs.anilist.co, 2026-08) allow non-commercial use
+    and forbid mass collection, so callers fetch only well-known titles of a date window. The limit is
+    30 requests a minute while the API is degraded (90 normally); 429 answers carry Retry-After."""
+
+    URL = "https://graphql.anilist.co"
+
+    def __init__(self, cache_dir: Path, per_second: float = 0.45):
+        self.cache = ResponseCache(cache_dir / "anilist.jsonl")
+        self.limiter = RateLimiter(per_second)
+
+    def query(self, query: str, variables: dict[str, Any]) -> Any:
+        key = json.dumps([query, variables], sort_keys=True)
+        if key in self.cache:
+            return self.cache.get(key)
+        body = _request("POST", self.URL, self.limiter, json={"query": query, "variables": variables},
+                        headers={"Content-Type": "application/json", "Accept": "application/json"})
+        self.cache.put(key, body)
+        return body
+
+
 class IGDB:
     BASE = "https://api.igdb.com/v4"
     FIELDS = ("name, first_release_date, total_rating_count, genres.name, themes.name, keywords.name, "

@@ -1,4 +1,4 @@
-"""Titles the catalog doesn't have: recent films, series and games from TMDB and IGDB.
+"""Titles the catalog doesn't have: recent films, series and games from TMDB and IGDB, anime from AniList.
 
 The catalog is the Amazon Reviews 2023 snapshot (reviews end September 2023), so later releases
 (Marvel Rivals, Baldur's Gate 3) and works Amazon barely sold (Cyberpunk: Edgerunners) are missing.
@@ -8,26 +8,50 @@ ranked list (serving/new_releases.py).
 
 Selection: released from SINCE onwards, with enough votes to be well known, minus works already in
 the catalog (same TMDB/IGDB id). Every response goes through the same on-disk cache as enrichment.
+
+Anime is not a medium of its own: an anime film is a film, an anime series a series, tagged with the
+"Anime" genre (so its first theme is "anime"). TMDB's Japanese animation gets the tag; AniList adds the
+anime TMDB doesn't know well enough, and a title both sources have is kept once, as TMDB's.
 """
 
 from __future__ import annotations
 
+import html
+import re
 import time
 from datetime import UTC, datetime
 from typing import Any
 
 import pandas as pd
 
-from crossverse.data.external import IGDB, TMDB, _year
+from crossverse.data.external import IGDB, TMDB, AniList, _year
 from crossverse.features.themes import item_themes
 
 SINCE = "2021-01-01"
-MIN_VOTES = {"movie": 300, "tv": 150, "game": 20}  # TMDB vote count / IGDB rating count
+# TMDB vote count / IGDB rating count / AniList popularity (members with the title on their list)
+MIN_VOTES = {"movie": 300, "tv": 150, "game": 20, "anime": 15_000}
 MAX_PAGES = 100  # TMDB discover: 20 results a page
 # Not stories: documentaries, reality, talk, news, soaps.
 SKIP_TMDB_GENRES = {99, 10763, 10764, 10766, 10767}
 IGDB_MAIN_TYPES = (0, 4, 8, 9, 10)  # main game, standalone expansion, remake, remaster, expanded game
 TMDB_POSTER = "https://image.tmdb.org/t/p/w342{}"
+TMDB_ANIMATION, ANIME_GENRE = 16, "Anime"
+# AniList formats that are works of their own; specials, OVAs and music videos are left out.
+ANILIST_KIND = {"TV": "tv", "TV_SHORT": "tv", "ONA": "tv", "MOVIE": "movie"}
+ANILIST_PAGES = 10  # 50 titles a page: the 500 most popular of the window at most (no bulk collection)
+ANILIST_QUERY = """
+query ($page: Int, $since: FuzzyDateInt, $minPopularity: Int) {
+  Page(page: $page, perPage: 50) {
+    pageInfo { hasNextPage }
+    media(type: ANIME, isAdult: false, startDate_greater: $since, popularity_greater: $minPopularity,
+          format_in: [TV, TV_SHORT, ONA, MOVIE], sort: POPULARITY_DESC) {
+      id title { english romaji } synonyms format startDate { year } description(asHtml: false)
+      genres tags { name rank isMediaSpoiler } popularity coverImage { large }
+      relations { edges { relationType node { type format } } }
+    }
+  }
+}"""
+_TAGS = re.compile(r"<[^>]+>")
 IGDB_COVER = "https://images.igdb.com/igdb/image/upload/t_cover_big/{}.jpg"
 
 COLUMNS = ["item_id", "domain", "kind", "title", "year", "text", "genres", "themes", "image", "collection",
@@ -64,6 +88,8 @@ def tmdb_titles(tmdb: TMDB, kind: str, since: str = SINCE, until: str | None = N
         kw = d.get("keywords", {})
         keywords = [k["name"] for k in (kw.get("keywords") or kw.get("results") or [])][:30]
         genres = [g["name"] for g in d.get("genres", [])]
+        if TMDB_ANIMATION in (c.get("genre_ids") or []) and c.get("original_language") == "ja":
+            genres.insert(0, ANIME_GENRE)  # first label -> first theme, the one cards show first
         title = c.get("title") or c.get("name") or ""
         collection = (d.get("belongs_to_collection") or {}).get("name", "") if kind == "movie" else ""
         overview = (d.get("overview") or c.get("overview") or "")[:2000]
@@ -101,6 +127,76 @@ def igdb_titles(igdb: IGDB, since: str = SINCE, min_votes: int | None = None, pa
                          "votes": int(c.get("total_rating_count") or 0)})
         if len(res) < 500:
             break
+    return rows
+
+
+def anilist_titles(anilist: AniList, since: str = SINCE, min_popularity: int | None = None,
+                   pages: int = ANILIST_PAGES) -> list[dict[str, Any]]:
+    """Well-known anime films and series that started from `since`. A later season of a series is the
+    same work (TMDB lists a series once), so titles continuing a TV series are skipped."""
+    variables = {"since": int(since.replace("-", "")), "minPopularity": min_popularity or MIN_VOTES["anime"]}
+    rows = []
+    for page in range(1, pages + 1):
+        body = anilist.query(ANILIST_QUERY, {**variables, "page": page}) or {}
+        if body.get("errors") and not body.get("data"):
+            raise RuntimeError(f"AniList: {body['errors'][0].get('message', 'error')}")
+        found = ((body.get("data") or {}).get("Page") or {})
+        for m in found.get("media") or []:
+            kind = ANILIST_KIND.get(m.get("format") or "")
+            edges = (m.get("relations") or {}).get("edges") or []
+            sequel = any(e.get("relationType") == "PREQUEL" and (e.get("node") or {}).get("type") == "ANIME"
+                         and ANILIST_KIND.get((e.get("node") or {}).get("format") or "") == "tv" for e in edges)
+            names = m.get("title") or {}
+            title = names.get("english") or names.get("romaji") or ""
+            if kind is None or not title or (kind == "tv" and sequel):
+                continue
+            overview = re.sub(r"\s+", " ", html.unescape(_TAGS.sub(" ", m.get("description") or ""))).strip()[:2000]
+            genres = [ANIME_GENRE, *(m.get("genres") or [])]
+            keywords = [t["name"] for t in sorted(m.get("tags") or [], key=lambda t: -(t.get("rank") or 0))
+                        if not t.get("isMediaSpoiler")][:30]
+            rows.append({"item_id": f"n_a{m['id']}", "domain": "movie", "kind": kind, "title": title,
+                         "year": (m.get("startDate") or {}).get("year"),
+                         "text": _text(title, overview, genres, keywords, ""), "genres": genres,
+                         "image": (m.get("coverImage") or {}).get("large") or "", "collection": "",
+                         "keywords": keywords, "ext_source": "anilist", "ext_id": int(m["id"]),
+                         "votes": int(m.get("popularity") or 0),
+                         "_names": [n for n in (names.get("english"), names.get("romaji"), *(m.get("synonyms") or []))
+                                    if n]})
+        if not (found.get("pageInfo") or {}).get("hasNextPage"):
+            break
+    return rows
+
+
+def merge_anime(rows: list[dict[str, Any]], anime: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Add AniList rows to TMDB/IGDB rows. An anime TMDB also has (same kind, a matching English, romaji
+    or alternative title, a year within one) stays TMDB's and gets the anime tag."""
+    from crossverse.serving.universe import norm
+
+    def key(title: str) -> str:  # "Journey’s" and "Journey's" (Unicode folding drops one, splits the other)
+        return norm(re.sub(r"['’‘`]", "", title))
+
+    by_title: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for r in rows:
+        if r["domain"] == "movie":
+            by_title.setdefault((key(r["title"]), r["kind"]), []).append(r)
+    out = list(rows)
+    for a in anime:
+        same = [r for name in a["_names"] for r in by_title.get((key(name), a["kind"]), [])
+                if r["year"] is None or a["year"] is None or abs(r["year"] - a["year"]) <= 1]
+        if same:
+            if ANIME_GENRE not in same[0]["genres"]:
+                same[0]["genres"] = [ANIME_GENRE, *same[0]["genres"]]
+        else:
+            out.append({k: v for k, v in a.items() if k != "_names"})
+    return out
+
+
+def fetch_rows(clients: Any, since: str = SINCE, until: str | None = None) -> list[dict[str, Any]]:
+    """Films and series (TMDB), games (IGDB) and anime (AniList, when `clients.anilist` is set)."""
+    rows = [*tmdb_titles(clients.tmdb, "movie", since, until), *tmdb_titles(clients.tmdb, "tv", since, until),
+            *igdb_titles(clients.igdb, since)]
+    if getattr(clients, "anilist", None) is not None:
+        rows = merge_anime(rows, anilist_titles(clients.anilist, since))
     return rows
 
 

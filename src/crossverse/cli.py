@@ -4,6 +4,7 @@
     crossverse recommend "Witcher 3" --to movie --dislike "Twilight"
     crossverse similar "Mass Effect" --domain game
     crossverse search witcher
+    crossverse refresh-new-releases --out /mnt/new-releases   # the scheduled job (needs TMDB/IGDB keys)
 """
 
 from __future__ import annotations
@@ -11,8 +12,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
+from pathlib import Path
+from types import SimpleNamespace
 
-from crossverse.config import get_settings
+from crossverse.config import get_settings, load_env
 from crossverse.monitoring.registry import ModelRegistry
 from crossverse.serving.engine import CrossVerseEngine
 
@@ -22,6 +26,35 @@ ICON = {"movie": "[movie]", "game": "[game] "}
 def _engine(version: str) -> CrossVerseEngine:
     s = get_settings()
     return CrossVerseEngine.load(ModelRegistry(s.serving.artifacts_dir).engine_path(version))
+
+
+def _refresh(eng: CrossVerseEngine, args: argparse.Namespace) -> int:
+    from crossverse.data import external as X
+    from crossverse.serving import new_releases
+
+    s = get_settings()
+    env = load_env()
+    missing = [k for k in ("TMDB_TOKEN", "IGDB_CLIENT_ID", "IGDB_CLIENT_SECRET") if not env.get(k)]
+    if missing:
+        print(f"missing (environment or .env): {', '.join(missing)}", file=sys.stderr)
+        return 1
+    out = Path(args.out or s.serving.new_releases_dir or s.serving.artifacts_dir / "new_releases")
+    # Franchise data of the catalog: staged next to the model by the deploy, else the local enrichment output.
+    staged = ModelRegistry(s.serving.artifacts_dir).engine_path(args.version).parent / "metadata.parquet"
+    matches = X.load_matches(staged if staged.exists() else s.data.external_metadata)
+    # A fresh response cache each run: answers are current, and nothing from TMDB is kept for months.
+    with tempfile.TemporaryDirectory() as cache:
+        clients = SimpleNamespace(tmdb=X.TMDB(env["TMDB_TOKEN"], Path(cache)),
+                                  igdb=X.IGDB(env["IGDB_CLIENT_ID"], env["IGDB_CLIENT_SECRET"], Path(cache)),
+                                  anilist=X.AniList(Path(cache)))
+        try:
+            version, counts = new_releases.refresh(eng, clients, out, args.since, args.until, matches,
+                                                   force=args.force)
+        except ValueError as e:
+            print(e, file=sys.stderr)
+            return 1
+    print(f"published new releases {version}: {counts} -> {out}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -42,9 +75,18 @@ def main(argv: list[str] | None = None) -> int:
     q = sub.add_parser("search")
     q.add_argument("query")
     q.add_argument("--domain", choices=["movie", "game"], default=None)
+    f = sub.add_parser("refresh-new-releases", help="fetch the latest films, series, anime and games and "
+                                                    "publish the new-release index the service reloads")
+    f.add_argument("--out", default=None, help="index folder (default: CROSSVERSE_NEW_RELEASES_DIR, "
+                                               "else artifacts/new_releases)")
+    f.add_argument("--since", default=None, help="first release date (default: data/new_releases.SINCE)")
+    f.add_argument("--until", default=None, help="last release date (default: today)")
+    f.add_argument("--force", action="store_true", help="publish even if the index shrank by more than half")
     args = p.parse_args(argv)
 
     eng = _engine(args.version)
+    if args.cmd == "refresh-new-releases":
+        return _refresh(eng, args)
     if args.cmd == "search":
         for h in eng.search(args.query, args.domain, 15):
             print(f"{ICON[h['domain']]} {h['title']}  ({h['item_id']}, liked by {h['popularity']})")
