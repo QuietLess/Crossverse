@@ -153,3 +153,16 @@ def test_scores_need_enough_votes(trained):
         engine.__dict__.pop("scores_", None)
         if saved is not None:
             engine.__dict__["scores_"] = saved
+
+
+def test_strict_title_match_finds_new_releases_without_a_scan(fresh, monkeypatch):
+    # A Letterboxd import matches up to 5000 names; scanning every new release per name costs tens of
+    # seconds per import in production (~2,900 new releases). A "(year)" suffix must still match.
+    engine, *_ = fresh
+    sequel = str(engine.fresh.items["title"].iloc[1])
+    monkeypatch.setattr(engine.fresh, "search", lambda *a, **kw: pytest.fail("scanned the new-release index"))
+    assert engine.match_title(sequel, 2024)["item_id"] == "n_m901"
+    assert engine.match_title(f"{sequel} (2024)", None)["item_id"] == "n_m901"
+    assert engine.match_title(sequel, 2010) is None  # year more than one off
+    assert engine.match_title("Brand New Game", None) is None  # Letterboxd matching is for films
+    assert engine.match_title("Brand New Game", None, "game")["item_id"] == "n_g900"
