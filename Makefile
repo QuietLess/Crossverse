@@ -1,7 +1,7 @@
 PY ?= python
 export PYTHONPATH := src$(if $(filter Windows_NT,$(OS)),;,:).
 
-.PHONY: install data data-download synthetic eda train evaluate publish pipeline serve web test lint smoke compose clean
+.PHONY: install data data-download synthetic eda train evaluate publish pipeline refresh-new-releases serve web test lint smoke compose clean
 
 install:            ## install package + dev/web extras
 	$(PY) -m pip install -e ".[dev,web]"
@@ -28,6 +28,9 @@ publish:            ## promote latest version through the cross-domain NDCG gate
 	$(PY) pipelines/publish.py
 
 pipeline: data train evaluate publish
+
+refresh-new-releases: ## fetch new films/series/anime/games -> artifacts/new_releases (serve with CROSSVERSE_NEW_RELEASES_DIR)
+	$(PY) -m crossverse.cli refresh-new-releases
 
 serve:              ## FastAPI on :8000
 	$(PY) -m uvicorn apps.api.main:app --port 8000

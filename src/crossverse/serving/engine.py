@@ -444,17 +444,28 @@ class CrossVerseEngine:
                 out.update(audience=float(r.audience), votes=int(r.audience_count))
             if len(out) > 1:
                 by_id[(r.source, r.kind, int(r.ext_id))] = out
-        items, n_cat, found = self.catalog.items, len(self.catalog), {}
-        if "ext_id" in items:
-            keys = zip(items["ext_source"].fillna(""), items["ext_kind"].fillna(""), items["ext_id"].fillna(-1).astype(int),
-                       strict=True)
-            found = {i: by_id[k] for i, k in enumerate(keys) if k in by_id}
-        if self.fresh is not None:
+        self.__dict__["score_ids_"] = by_id
+        return self._key_scores()
+
+    def _key_scores(self) -> int:
+        """scores_ (combined index -> score) from score_ids_ (external id -> score) for the catalog and the
+        new releases attached now. Engines pickled before score_ids_ keep catalog scores only."""
+        by_id = self.__dict__.get("score_ids_")
+        items, n_cat = self.catalog.items, len(self.catalog)
+        if by_id is None:
+            found = {i: s for i, s in (self.__dict__.get("scores_") or {}).items() if i < n_cat}
+        else:
+            found = {}
+            if "ext_id" in items:
+                keys = zip(items["ext_source"].fillna(""), items["ext_kind"].fillna(""),
+                           items["ext_id"].fillna(-1).astype(int), strict=True)
+                found = {i: by_id[k] for i, k in enumerate(keys) if k in by_id}
+        if self.fresh is not None and by_id is not None:
             new = self.fresh.items
             for n, k in enumerate(zip(new["ext_source"], new["kind"], new["ext_id"].astype(int), strict=True)):
                 if k in by_id:
                     found[n_cat + n] = by_id[k]
-        self.__dict__["scores_"] = found
+        self.__dict__["scores_"] = found  # one assignment: readers see the old or the new table
         return len(found)
 
     def rating(self, j: int) -> dict[str, Any] | None:
@@ -474,6 +485,8 @@ class CrossVerseEngine:
 
     def attach_new_releases(self, index: Any) -> None:
         self.__dict__["new_releases_"] = index
+        if "scores_" in self.__dict__:  # new-release scores are keyed by row: re-key them for this index
+            self._key_scores()
 
     def _combined(self, ids: list[str]) -> list[int]:
         """Item ids -> one index space: catalog items first, then new releases (len(catalog) + row)."""

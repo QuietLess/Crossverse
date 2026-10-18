@@ -74,6 +74,8 @@ const kindOf = (it) => it.kind || (it.domain === "game" ? "game" : "movie");
 const KIND_LABEL = { movie: "Movie", tv: "TV series", game: "Game" };
 const domainLabel = (it) => KIND_LABEL[kindOf(it)];
 const tag = (it) => h("span", { class: `tag ${kindOf(it)}` }, { movie: "Film", tv: "TV", game: "Game" }[kindOf(it)]);
+// Anime is a tag on films and series, not a medium of its own: it shows under Movies and TV series.
+const animeBadge = (it) => (it.domain !== "game" && it.themes?.includes("anime") ? h("span", { class: "tag anime" }, "Anime") : null);
 // titles newer than the review data (served by story match only)
 /** Public score: IGDB critics (games, /100) first, else the audience score (TMDB /10, IGDB players /100). */
 function scoreText(it) {
@@ -154,7 +156,7 @@ function renderDropdown() {
       onmousedown: (e) => { e.preventDefault(); addPick(it); },
     }, cover(it), h("div", {},
       h("div", { class: "t" }, it.title, " ", h("span", { class: "year" }, year(it))),
-      h("div", { class: "s" }, tag(it), newBadge(it), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
+      h("div", { class: "s" }, tag(it), animeBadge(it), newBadge(it), it.themes?.length ? `  ${it.themes.slice(0, 3).join(" · ")}` : ""))));
   });
   dropdown.hidden = false;
   search.parentElement.setAttribute("aria-expanded", "true");
@@ -435,7 +437,7 @@ function tilt(el) {
 function card(it, rank, compact = false) {
   const el = h("article", { class: `card ${kindOf(it)}`, tabindex: "0", "aria-label": `${it.title}, ${domainLabel(it)}`, style: `animation-delay:${Math.min(rank || 0, 14) * 25}ms` },
     h("span", { class: "shimmer" }),
-    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), newBadge(it),
+    h("div", { class: "poster" }, cover(it), rank ? h("span", { class: "rank" }, rank) : null, tag(it), animeBadge(it), newBadge(it),
       compact ? null : quickActions(it)),
     h("div", { class: "card-body" },
       h("div", { class: "card-title" }, it.title, " ", h("span", { class: "year" }, year(it)), " ", scoreBadge(it)),
@@ -453,7 +455,7 @@ function feature(it) {
   const reason = it.evidence?.summary?.replace(/^Recommended because /, "").replace(/^./, (c) => c.toUpperCase());
   const el = h("article", { class: "feature", tabindex: "0", "aria-label": `Top match: ${it.title}` },
     it.image ? h("div", { class: "backdrop", style: `background-image:url("${it.image.replace(/"/g, "%22")}")` }) : null,
-    h("div", { class: "poster" }, cover(it), tag(it)),
+    h("div", { class: "poster" }, cover(it), tag(it), animeBadge(it)),
     h("div", {},
       h("div", { class: "eyebrow" }, "★ Top match"),
       h("h3", {}, it.title, " ", h("span", { class: "year" }, year(it))),
@@ -486,7 +488,7 @@ async function openDetail(it) {
   $("#detail-body").replaceChildren(
     h("div", { class: "detail-top" },
       it.image ? h("div", { class: "backdrop", style: `background-image:url("${it.image.replace(/"/g, "%22")}")` }) : null,
-      h("div", { class: "poster" }, cover(it), tag(it)),
+      h("div", { class: "poster" }, cover(it), tag(it), animeBadge(it)),
       h("div", {},
         h("h3", { id: "detail-title" }, it.title),
         h("div", { class: "meta" }, [domainLabel(it), year(it), it.new && "new release"].filter(Boolean).join(" · ")),

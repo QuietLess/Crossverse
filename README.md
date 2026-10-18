@@ -75,7 +75,7 @@ chance, and *Kingsglaive* ↔ *Final Fantasy XV* 50×.
 | Post-ranking | Eligibility filter (no memberships, gift cards, DLC, amiibo/cases), MMR diversity, creator repetition penalty, domain quotas for unified lists, explicit-intent tiers for cold start |
 | Evaluation (§6) | Chronological per-user split **plus cross-domain holdout users whose target domain is entirely hidden from training**; Recall/NDCG/HitRate/MAP, coverage, diversity, novelty, popularity bias; segments; paired-bootstrap CIs; 100-case error analysis. Parallel (≈2.5 min). [docs/evaluation.md](docs/evaluation.md) |
 | Same universe | Adaptations and tie-ins next to the ranked list (*The Last of Us* game → the HBO series, *Super Mario Bros.* film → the Mario games), from TMDB collections / "based on video game" and IGDB franchises / tie-in tags; never mixed into the ranking. `src/crossverse/serving/universe.py`; add to an existing model with `python scripts/build_universe.py` |
-| New releases | ~2,900 films, series and games newer than (or missing from) the review data, from TMDB/IGDB (*Marvel Rivals*, *Cyberpunk: Edgerunners*, *The Super Mario Bros. Movie*): searchable, shown in a "✨ New releases" row by sentence-embedding similarity and in "Same universe" by franchise. Picked as a favourite, one stands in as its closest catalog titles for the ranked list. Never in the trained model. `python pipelines/new_releases.py` then `python scripts/build_new_releases.py` |
+| New releases | ~2,900 films, series and games newer than (or missing from) the review data, from TMDB/IGDB, plus anime from AniList (*Marvel Rivals*, *Cyberpunk: Edgerunners*, *The Super Mario Bros. Movie*, *Chainsaw Man – The Movie: Reze Arc*): searchable, shown in a "✨ New releases" row by sentence-embedding similarity and in "Same universe" by franchise. Picked as a favourite, one stands in as its closest catalog titles for the ranked list. Never in the trained model. **Anime is a tag, not a medium**: anime films are films and anime series are series, with an "Anime" chip. **Refreshed on a schedule** without retraining or redeploying: `crossverse refresh-new-releases` publishes a new index version and the service reloads it (`CROSSVERSE_NEW_RELEASES_DIR`). Locally: `python pipelines/new_releases.py` then `python scripts/build_new_releases.py` |
 | Scores | Cards show public scores: TMDB audience rating for films and series, IGDB critic (and player) scores for games, only with enough votes behind them. Display only, never a ranking input. `python pipelines/scores.py` then `python scripts/build_scores.py` |
 | Letterboxd import | "Import my Letterboxd ratings" reads the member's own data export (.zip or ratings.csv) in the browser and sends only names, years and stars to `/import/letterboxd`, which matches strictly (same title, year within one). 4★+ become favourites, ≤1.5★ dislikes. No Letterboxd API involved (theirs isn't open to recommendation projects). |
 | Explainability (§7) | Deterministic evidence objects + template verbalisation that only states what clears a threshold |
@@ -83,7 +83,7 @@ chance, and *Kingsglaive* ↔ *Final Fantasy XV* 50×.
 | Storage | Postgres (or SQLite locally) for the recommendation log + feedback, Redis (or in-process) cache; integration-tested against real servers |
 | MLOps (§8, §12) | Versioned registry with dataset fingerprints, run tracking (MLflow if installed, JSON always), promotion gate on cross-domain NDCG + per-task guardrails that refuses cross-dataset comparisons, Prometheus metrics + provisioned Grafana dashboard |
 | Demo (§13) | Streamlit app (five modes + evidence panel + admin view), CLI |
-| CI (§12) | GitHub Actions with pinned `constraints.txt`: ruff, mypy, pytest (289 tests incl. Postgres/Redis integration via service containers), synthetic end-to-end train→evaluate→gate, gitleaks, Docker build + API smoke test |
+| CI (§12) | GitHub Actions with pinned `constraints.txt`: ruff, mypy, pytest (316 tests incl. Postgres/Redis integration via service containers), synthetic end-to-end train→evaluate→gate, gitleaks, Docker build + API smoke test |
 
 What was verified, and how (including the Compose stack run natively because Docker is unavailable
 on the dev machine), is in [docs/verification.md](docs/verification.md).
@@ -111,8 +111,11 @@ docker compose -f infra/docker-compose.yml up --build   # API + web + Postgres +
 
 Deploying (see the scripts' docstrings): `python scripts/deploy_cloudrun.py` builds the production
 model into a private image and serves it on Google Cloud Run; `python scripts/firebase_hosting.py`
-puts the short `*.web.app` URL in front of it. `scripts/deploy_space.py` does the same on Hugging Face
-Spaces (Docker Spaces need a PRO account).
+puts the short `*.web.app` URL in front of it. `python scripts/deploy_refresh_job.py` prints (and with
+`--apply` runs) the setup of the twice-weekly new-release refresh: a Cloud Run job on the service's image,
+Cloud Scheduler, a private bucket the service mounts read-only, and the API keys in Secret Manager.
+`scripts/deploy_space.py` does the same as `deploy_cloudrun.py` on Hugging Face Spaces (Docker Spaces need
+a PRO account).
 
 Common targets live in the [Makefile](Makefile): `make pipeline`, `make eda`, `make serve`, `make web`, `make test`, `make compose`.
 
@@ -213,6 +216,9 @@ reports/                      per-version benchmarks, significance, error analys
 * TMDB API (movie and TV metadata: overviews, genres, keywords, release years) https://www.themoviedb.org/ .
   **This product uses the TMDB API but is not endorsed or certified by TMDB.**
 * IGDB API (game metadata, via Twitch) https://www.igdb.com/ , https://api-docs.igdb.com/
+* AniList API (anime: new films and series; no key) https://anilist.co/ , https://docs.anilist.co/ . Free for
+  non-commercial use; the refresh fetches only the well-known titles of its window (AniList forbids mass
+  collection and using the API as data storage).
 
 Datasets are downloaded by code and never committed; TMDB/IGDB responses are cached locally under
 `data/external/` (git-ignored) and used for non-commercial research only. Keys go in a git-ignored

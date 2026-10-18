@@ -3,9 +3,10 @@
     python pipelines/new_releases.py                 # released since 2021 (a few minutes; cached afterwards)
     python pipelines/new_releases.py --since 2023-09-01
 
-Needs TMDB_TOKEN, IGDB_CLIENT_ID and IGDB_CLIENT_SECRET in .env (as pipelines/enrich.py). Then attach them
-to a model with `python scripts/build_new_releases.py`. Re-run both to refresh: discover results are cached
-by query, so pass a new --until (default: today) to see later releases.
+Needs TMDB_TOKEN, IGDB_CLIENT_ID and IGDB_CLIENT_SECRET in .env (as pipelines/enrich.py); anime comes from
+AniList (no key). Then attach them to a model with `python scripts/build_new_releases.py`. Re-run both to
+refresh: discover results are cached by query, so pass a new --until (default: today) to see later releases.
+For the deployed service, `crossverse refresh-new-releases` does all of this on a schedule instead.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from types import SimpleNamespace
 
 import pandas as pd
 
@@ -36,17 +38,11 @@ def main(argv: list[str] | None = None) -> int:
     if missing:
         print(f"missing in .env: {', '.join(missing)}", file=sys.stderr)
         return 1
-    tmdb = X.TMDB(env["TMDB_TOKEN"], OUT_DIR)
-    igdb = X.IGDB(env["IGDB_CLIENT_ID"], env["IGDB_CLIENT_SECRET"], OUT_DIR)
-
-    rows = []
-    for kind in ("movie", "tv"):
-        got = N.tmdb_titles(tmdb, kind, args.since, args.until)
-        print(f"TMDB {kind}: {len(got)}", flush=True)
-        rows += got
-    got = N.igdb_titles(igdb, args.since)
-    print(f"IGDB games: {len(got)}", flush=True)
-    rows += got
+    clients = SimpleNamespace(tmdb=X.TMDB(env["TMDB_TOKEN"], OUT_DIR),
+                              igdb=X.IGDB(env["IGDB_CLIENT_ID"], env["IGDB_CLIENT_SECRET"], OUT_DIR),
+                              anilist=X.AniList(OUT_DIR))
+    rows = N.fetch_rows(clients, args.since, args.until)
+    print(f"fetched {len(rows)} titles (TMDB, IGDB, AniList)", flush=True)
 
     items = pd.read_parquet(get_settings().data.processed_dir / "items.parquet")
     known = items[items["ext_id"] >= 0][["ext_source", "ext_id"]]

@@ -51,6 +51,25 @@ Web UI (Streamlit)  ──HTTP──▶  FastAPI (crossverse.serving.api)
                                   └──▶ Prometheus metrics → Grafana dashboard
 ```
 
+## New-release refresh (scheduled, no retraining)
+
+```
+Cloud Scheduler (Mon + Thu)  ──▶  Cloud Run job, same image as the service
+                                    crossverse refresh-new-releases --out /mnt/new-releases
+                                      TMDB discover (films, series; Japanese animation tagged Anime)
+                                      IGDB games · AniList anime (well-known, not continuation seasons)
+                                      − titles the catalog has → embed (model's sentence model)
+                                      → franchise links + stand-ins → publish version, then CURRENT
+                                            │  (Parquet + .npy + JSON; 3 versions kept; refuses an
+                                            ▼   index under half the live one)
+                                  Cloud Storage bucket ──(read-only volume)──▶ service
+                                                          reloads within 10 min, /health shows the version
+```
+
+The behaviour data is the frozen Amazon 2023 snapshot, so retraining on a schedule would reproduce
+the same model; only the new-release side index changes. Each run starts with an empty HTTP cache,
+so nothing fetched from TMDB is kept beyond the index it builds.
+
 All models implement one contract — `score(history) -> scores for every catalog item` — so the
 same code serves offline fold-in evaluation, anonymous API profiles, and cold start.
 

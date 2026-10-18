@@ -99,11 +99,16 @@ def _request(method: str, url: str, limiter: RateLimiter, attempts: int = 6, **k
             time.sleep(2**attempt)
             continue
         if r.status_code == 429 or r.status_code >= 500:
-            time.sleep(float(r.headers.get("Retry-After", 2**attempt)))
+            try:
+                wait = float(r.headers.get("Retry-After", 2**attempt))
+            except ValueError:  # an HTTP date
+                wait = 2**attempt
+            time.sleep(min(max(wait, 0), 120) if math.isfinite(wait) else 2**attempt)
             continue
         if r.status_code == 404:
             return None
-        r.raise_for_status()
+        if r.status_code >= 400:  # no URL query string in the message: it can carry credentials
+            raise requests.HTTPError(f"{r.status_code} {r.reason} for {url.split('?')[0]}", response=r)
         return r.json()
     raise RuntimeError(f"{url.split('?')[0]}: no answer after {attempts} attempts")
 
@@ -132,6 +137,27 @@ class TMDB:
         return self.get(f"{kind}/{tmdb_id}", append_to_response="keywords")
 
 
+class AniList:
+    """AniList GraphQL API (anime), no key. Its terms (docs.anilist.co, 2026-08) allow non-commercial use
+    and forbid mass collection, so callers fetch only well-known titles of a date window. The limit is
+    30 requests a minute while the API is degraded (90 normally); 429 answers carry Retry-After."""
+
+    URL = "https://graphql.anilist.co"
+
+    def __init__(self, cache_dir: Path, per_second: float = 0.45):
+        self.cache = ResponseCache(cache_dir / "anilist.jsonl")
+        self.limiter = RateLimiter(per_second)
+
+    def query(self, query: str, variables: dict[str, Any]) -> Any:
+        key = json.dumps([query, variables], sort_keys=True)
+        if key in self.cache:
+            return self.cache.get(key)
+        body = _request("POST", self.URL, self.limiter, json={"query": query, "variables": variables},
+                        headers={"Content-Type": "application/json", "Accept": "application/json"})
+        self.cache.put(key, body)
+        return body
+
+
 class IGDB:
     BASE = "https://api.igdb.com/v4"
     FIELDS = ("name, first_release_date, total_rating_count, genres.name, themes.name, keywords.name, "
@@ -145,7 +171,7 @@ class IGDB:
 
     def _auth(self) -> dict[str, str]:
         if self._token is None:
-            body = _request("POST", "https://id.twitch.tv/oauth2/token", self.limiter, params={
+            body = _request("POST", "https://id.twitch.tv/oauth2/token", self.limiter, data={  # body, not URL
                 "client_id": self.client_id, "client_secret": self.client_secret, "grant_type": "client_credentials"})
             self._token = body["access_token"]
         return {"Client-ID": self.client_id, "Authorization": f"Bearer {self._token}"}

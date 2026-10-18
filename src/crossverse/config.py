@@ -108,6 +108,9 @@ class ServingConfig:
     redis_url: str = ""  # redis://... ; empty -> in-process cache
     cache_ttl_seconds: int = 300
     default_k: int = 10
+    # Published new-release index (serving/new_releases.publish); empty -> the one inside the model.
+    new_releases_dir: str = ""
+    new_releases_check_seconds: int = 600
 
     def __post_init__(self) -> None:
         _env_override(self)
