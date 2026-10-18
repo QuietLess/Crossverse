@@ -3,6 +3,17 @@
 What has been checked, how, and what could not be checked on the development machine (Windows 11,
 no Docker). Dates: 2026-10-05.
 
+## New-release refresh, 2026-10-18
+
+| check | result |
+|---|---|
+| `pytest` | 313 passed, 3 skipped |
+| Security review of the refresh | 4 MEDIUM findings fixed with regression tests: an index built for another model was served (500s), public scores showed on the wrong titles after a reload, a Twitch auth error put the IGDB secret in the error text (and so the job's logs), the job and the public service shared one over-privileged account. A re-review confirmed the fixes and found 3 LOW issues (a concurrent run's unfinished version could be pruned, a transient read error wasn't retried, `Retry-After: nan` crashed the job), fixed with tests. Other LOW items are follow-ups in ROADMAP |
+| AniList query against the live API (one page, `since=2025-07-01`) | 25 of 50 titles kept (later seasons and specials dropped), e.g. *Chainsaw Man – The Movie: Reze Arc* as a film, *Gachiakuta* as a series, each with "anime" as first theme |
+| Service with a published index (synthetic engine, those AniList titles, headless Chrome) | `/health` shows the published version; under Movies the New releases row shows the anime films with Film + Anime + New chips |
+| TMDB and IGDB against the live APIs | not run: no keys on this machine |
+| `scripts/deploy_refresh_job.py` | dry run only (unit test with a fake gcloud); nothing created in Google Cloud |
+
 ## Re-run 2026-10-18 (macOS, Python 3.12, `constraints.txt` versions)
 
 | check | result |

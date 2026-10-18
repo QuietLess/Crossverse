@@ -23,7 +23,9 @@ rather than generated text.
    DNA (closest story, setting and themes).
 3. **Start from a mood.** With no titles, pick moods or type free text ("dark sci-fi about AI").
 4. **Explore around a pick.** Open an item: similar titles in both media, "Same universe" adaptations
-   and tie-ins, and newer titles ("New releases") that the review data doesn't contain.
+   and tie-ins, and newer titles ("New releases") that the review data doesn't contain. New releases
+   are refreshed twice a week without retraining. Anime films and series appear under Movies and TV
+   series with an "Anime" chip (a tag, not a separate medium).
 5. **Import taste.** Load a Letterboxd export; 4★+ films become favourites, ≤1.5★ dislikes. The file
    is read in the browser and only names, years and stars are sent.
 6. **Share.** The picks live in the URL.
@@ -38,6 +40,8 @@ rather than generated text.
 * A title that exists as both a movie and a game resolves to one and lists the other in `ambiguous`.
 * Every recommended item carries an evidence object; the summary only states signals above threshold.
 * No memberships, gift cards, DLC, hardware or compilations in recommendations.
+* New releases come from TMDB, IGDB and AniList; a title both TMDB and AniList list appears once; a
+  refresh that would shrink the index below half its size is not published.
 * Letterboxd matching is strict: same title, year within one; near-misses are reported as unmatched.
 * Requests are bounded: ≤100 liked and ≤100 disliked titles, titles ≤300 characters, feedback context
   ≤4 KB; larger requests get a 422.
