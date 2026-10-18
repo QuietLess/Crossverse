@@ -572,6 +572,17 @@ class CrossVerseEngine:
             self.__dict__["_exact"], self.__dict__["_exact_src"] = exact, match
         return self.__dict__["_exact"]
 
+    def _fresh_exact_titles(self) -> dict[str, list[int]]:
+        """Match key -> new-release rows, most voted first. Rebuilt when another index is attached."""
+        fresh = self.fresh
+        if self.__dict__.get("_fresh_exact_src") is not fresh:
+            exact: dict[str, list[int]] = {}
+            votes = fresh.items["votes"].to_numpy()
+            for n in np.argsort(-votes, kind="stable"):
+                exact.setdefault(_match_key(_TRAILING_YEAR.sub("", str(fresh.items["title"].iloc[n]))), []).append(int(n))
+            self.__dict__["_fresh_exact"], self.__dict__["_fresh_exact_src"] = exact, fresh
+        return self.__dict__["_fresh_exact"]
+
     def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
         title, hinted_domain, year = parse_query(query)
         domain = domain or hinted_domain
@@ -632,7 +643,9 @@ class CrossVerseEngine:
                      key=lambda i: (not (year and years[i] == year), -self.popularity[i]))
         hits = [self.item_dict(i) for i in idx]
         if self.fresh is not None:
-            hits += [self._new_item(n) for is_exact, n in self.fresh.search(name, domain, 20) if is_exact]
+            fresh_dom = self.fresh.items["domain"].to_numpy()
+            hits += [self._new_item(n) for n in self._fresh_exact_titles().get(key, ())
+                     if domain is None or fresh_dom[n] == domain]
         for hit in hits:
             if _match_key(_TRAILING_YEAR.sub("", hit["title"])) != key:
                 continue
