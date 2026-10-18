@@ -168,11 +168,11 @@ def test_service_picks_up_a_newly_published_index(trained, small_settings, tmp_p
     serving = dataclasses.replace(small_settings.serving, new_releases_dir=str(tmp_path),
                                   new_releases_check_seconds=0)
     settings = dataclasses.replace(small_settings, serving=serving)
-    S.publish(index_of(["Zqx Alpha Show"], len(engine.catalog)), tmp_path)
+    S.publish(index_of(["Zqx Alpha Show"], len(engine.catalog)), tmp_path, engine=engine)
     with TestClient(create_app(settings, engine)) as client:
         found = client.get("/items/search", params={"q": "Zqx Alpha Show"}).json()
         assert found and found[0]["title"] == "Zqx Alpha Show" and found[0]["new"] is True
-        S.publish(index_of(["Zqx Beta Show"], len(engine.catalog)), tmp_path)
+        S.publish(index_of(["Zqx Beta Show"], len(engine.catalog)), tmp_path, engine=engine)
         found = client.get("/items/search", params={"q": "Zqx Beta Show"}).json()
         assert found and found[0]["title"] == "Zqx Beta Show"
         assert client.get("/items/search", params={"q": "Zqx Alpha Show"}).json() == []
@@ -208,3 +208,76 @@ def test_refresh_fetches_all_sources_and_publishes(trained, tmp_path, monkeypatc
     assert anime == {"Frieren: Beyond Journey's End", "Dandadan"}
     assert counts == {"movie": 1, "tv": 2, "game": 1}
     assert json.loads((tmp_path / version / "graph.json").read_text())["fetched_at"]
+
+
+# ---------------------------------------------------------------------------------------------
+# security review of the refresh (M1-M3, L2)
+# ---------------------------------------------------------------------------------------------
+def test_an_index_built_for_another_model_is_not_loaded(trained, tmp_path):
+    # Row numbers in links and stand-ins only mean something for the catalog they were built on: after a
+    # retrain, an index from the old job must not be served (wrong titles, or a 500).
+    engine, _, _ = trained
+    n_cat = len(engine.catalog)
+    S.publish(index_of(["Show A", "Show B", "Show C"], n_cat), tmp_path, engine=engine)
+    assert S.load_published(tmp_path, engine=engine)[1] is not None
+    other = SimpleNamespace(version="retrained", catalog=engine.catalog, retrievers={})
+    assert S.load_published(tmp_path, engine=other) == (None, None)
+    bad = index_of(["Show A", "Show B", "Show C"], n_cat)
+    bad.stand_ins = {0: [n_cat + 50]}  # past the catalog
+    S.publish(bad, tmp_path, engine=engine, force=True)
+    assert S.load_published(tmp_path, engine=engine) == (None, None)
+    bad = index_of(["Show A", "Show B", "Show C"], n_cat)
+    bad.links = {n_cat + 99: [0]}  # past catalog + new releases
+    S.publish(bad, tmp_path, engine=engine, force=True)
+    assert S.load_published(tmp_path, engine=engine) == (None, None)
+    S.publish(index_of(["Show A"], n_cat), tmp_path, force=True)  # no model recorded: not loadable for serving
+    assert S.load_published(tmp_path, engine=engine) == (None, None)
+    assert S.load_published(tmp_path)[1] is not None  # (still readable without an engine, e.g. for the shrink check)
+
+
+def test_scores_follow_titles_when_the_index_is_replaced(trained, monkeypatch):
+    engine, _, _ = trained
+    monkeypatch.setitem(engine.__dict__, "new_releases_", None)
+    monkeypatch.setitem(engine.__dict__, "scores_", {})
+    old = index_of(["Old Show Zq", "Other Show Zq"], len(engine.catalog))
+    engine.attach_new_releases(old)
+    scores = pd.DataFrame([{"source": "tmdb", "kind": "tv", "ext_id": 0, "critics": None, "critics_count": 0,
+                            "audience": 9.9, "audience_count": 5000}])
+    assert engine.attach_scores(scores) >= 1
+    assert engine._new_item(0)["rating"]["audience"] == 9.9  # "Old Show Zq" has TMDB id 0
+    new = index_of(["Different Show Zq", "Old Show Zq"], len(engine.catalog))
+    new.items["ext_id"] = [7, 0]  # Old Show Zq moved to row 1
+    engine.attach_new_releases(new)
+    assert engine._new_item(0)["rating"] is None  # not the 9.9 of whatever used to be row 0
+    assert engine._new_item(1)["rating"]["audience"] == 9.9
+
+
+def test_igdb_auth_error_does_not_reveal_the_client_secret(tmp_path, monkeypatch):
+    import requests
+
+    from crossverse.data import external as X
+
+    sent = []
+
+    def fake_request(method, url, **kw):
+        sent.append((url, kw))
+        r = requests.Response()
+        r.status_code, r.reason = 403, "Forbidden"
+        r.url = requests.Request(method, url, params=kw.get("params")).prepare().url
+        return r
+
+    monkeypatch.setattr(X.requests, "request", fake_request)
+    igdb = X.IGDB("cid", "SUPERSECRET123", tmp_path)
+    with pytest.raises(Exception) as err:
+        igdb._auth()
+    assert "SUPERSECRET123" not in str(err.value)
+    url, kw = sent[0]
+    assert "SUPERSECRET123" not in url and "SUPERSECRET123" not in str(kw.get("params"))  # form body, not URL
+
+
+def test_a_broken_live_version_does_not_block_the_next_publish(tmp_path):
+    good = S.publish(index_of(["Show A", "Show B"]), tmp_path)
+    (tmp_path / good / "graph.json").write_text("{not json")
+    (tmp_path / "20000101T000000-00").mkdir()  # a version a killed job never finished
+    version = S.publish(index_of(["Show C", "Show D"]), tmp_path)
+    assert S.load_published(tmp_path)[0] == version

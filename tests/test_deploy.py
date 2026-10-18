@@ -93,5 +93,17 @@ def test_refresh_job_dry_run_changes_nothing_and_never_prints_keys(monkeypatch, 
     assert "'--schedule=0 5 * * 1,4'" in printed
     assert "bucket=my-proj-crossverse-new-releases,readonly=true" in printed  # the service only reads
     assert "--public-access-prevention" in printed
+    # The public service and the job don't share an identity (security review M4): the job alone writes the
+    # bucket and reads the keys; the service only reads the bucket; nothing goes to the default account.
+    job_sa = "crossverse-refresh@my-proj.iam.gserviceaccount.com"
+    web_sa = "crossverse-web@my-proj.iam.gserviceaccount.com"
+    lines = printed.splitlines()
+    assert "compute@developer" not in printed
+    assert any("jobs deploy" in x and f"--service-account {job_sa}" in x for x in lines)
+    assert any("services update" in x and f"--service-account {web_sa}" in x for x in lines)
+    assert any(f"serviceAccount:{job_sa}" in x and "roles/storage.objectAdmin" in x for x in lines)
+    assert any(f"serviceAccount:{web_sa}" in x and "roles/storage.objectViewer" in x for x in lines)
+    assert not any(web_sa in x and ("secretAccessor" in x or "objectAdmin" in x or "run.invoker" in x) for x in lines)
+    assert all(job_sa in x for x in lines if "secretAccessor" in x or "run.invoker" in x)
     assert "Nothing changed" in printed
     sys.modules.pop("deploy_cloudrun", None)
