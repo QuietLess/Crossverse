@@ -156,6 +156,7 @@ class State:
     pop_pct: np.ndarray
     loaded_at: float = 0.0
     fresh_version: str | None = None  # published new-release index in use (None: the model's own)
+    fresh_seen: str | None = None  # last published version examined (loaded or rejected)
     fresh_checked: float = 0.0
 
 
@@ -178,9 +179,10 @@ def reload_new_releases(force: bool = False) -> None:
         state.fresh_checked = now
         root = Path(serving.new_releases_dir)
         version = new_releases.current_version(root)
-        if version is None or version == state.fresh_version:
+        if version is None or version == state.fresh_seen:
             return
-        version, index = new_releases.load_published(root)
+        state.fresh_seen = version
+        version, index = new_releases.load_published(root, engine=state.engine)
         if index is not None:
             state.engine.attach_new_releases(index)
             state.fresh_version = version
@@ -197,7 +199,7 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         registry = ModelRegistry(settings.serving.artifacts_dir)
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
-    state.fresh_version, state.fresh_checked = None, 0.0
+    state.fresh_version, state.fresh_seen, state.fresh_checked = None, None, 0.0
     reload_new_releases(force=True)
     engine.search("warmup")  # build the title prefix index before the first request
     engine.match_title("warmup")  # and the exact-title table (Letterboxd import)

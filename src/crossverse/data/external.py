@@ -99,11 +99,16 @@ def _request(method: str, url: str, limiter: RateLimiter, attempts: int = 6, **k
             time.sleep(2**attempt)
             continue
         if r.status_code == 429 or r.status_code >= 500:
-            time.sleep(float(r.headers.get("Retry-After", 2**attempt)))
+            try:
+                wait = float(r.headers.get("Retry-After", 2**attempt))
+            except ValueError:  # an HTTP date
+                wait = 2**attempt
+            time.sleep(min(wait, 120))
             continue
         if r.status_code == 404:
             return None
-        r.raise_for_status()
+        if r.status_code >= 400:  # no URL query string in the message: it can carry credentials
+            raise requests.HTTPError(f"{r.status_code} {r.reason} for {url.split('?')[0]}", response=r)
         return r.json()
     raise RuntimeError(f"{url.split('?')[0]}: no answer after {attempts} attempts")
 
@@ -166,7 +171,7 @@ class IGDB:
 
     def _auth(self) -> dict[str, str]:
         if self._token is None:
-            body = _request("POST", "https://id.twitch.tv/oauth2/token", self.limiter, params={
+            body = _request("POST", "https://id.twitch.tv/oauth2/token", self.limiter, data={  # body, not URL
                 "client_id": self.client_id, "client_secret": self.client_secret, "grant_type": "client_credentials"})
             self._token = body["access_token"]
         return {"Client-ID": self.client_id, "Authorization": f"Bearer {self._token}"}

@@ -18,7 +18,8 @@ derived from Amazon Reviews 2023 and TMDB/IGDB, so it must never go to a public 
 Limits keep the bill at (near) zero for testing: scale to zero when idle, at most 2 instances.
 
 With --new-releases-bucket the service also mounts the bucket the scheduled refresh job writes to
-(scripts/deploy_refresh_job.py) and reloads new releases from it without a redeploy.
+(scripts/deploy_refresh_job.py) and reloads new releases from it without a redeploy. The job then gets
+the new image and runs once: an index is only served by the model it was built with.
 """
 
 from __future__ import annotations
@@ -86,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--memory", default="2Gi")
     p.add_argument("--new-releases-bucket", default="", help="mount this bucket's published new releases "
                                                               "(read-only) at /mnt/new-releases")
+    p.add_argument("--refresh-job", default="crossverse-refresh", help="the refresh job to move to the new image")
     args = p.parse_args(argv)
 
     registry = ModelRegistry(get_settings().serving.artifacts_dir)
@@ -102,7 +104,21 @@ def main(argv: list[str] | None = None) -> int:
                "--timeout", "60", "--allow-unauthenticated", "--quiet"]
         if args.new_releases_bucket:
             cmd += new_releases_mount(args.new_releases_bucket)
-        return subprocess.call(cmd)
+        rc = subprocess.call(cmd)
+    if rc or not args.new_releases_bucket:
+        return rc
+    # The job builds indexes for the model in its image; until it runs on the new one, the service keeps
+    # the model's own new releases (it refuses an index built for another model).
+    image = subprocess.run([gcloud(), "run", "services", "describe", args.service, "--region", args.region,
+                            "--format=value(spec.template.spec.containers[0].image)"],
+                           capture_output=True, text=True, check=True).stdout.strip()
+    for step in (["run", "jobs", "update", args.refresh_job, "--image", image, "--region", args.region],
+                 ["run", "jobs", "execute", args.refresh_job, "--region", args.region, "--async"]):
+        rc = subprocess.call([gcloud(), *step])
+        if rc:
+            print(f"refresh job not updated ({' '.join(step[:3])}): run scripts/deploy_refresh_job.py", file=sys.stderr)
+            return rc
+    return 0
 
 
 if __name__ == "__main__":

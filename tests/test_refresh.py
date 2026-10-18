@@ -239,6 +239,7 @@ def test_scores_follow_titles_when_the_index_is_replaced(trained, monkeypatch):
     engine, _, _ = trained
     monkeypatch.setitem(engine.__dict__, "new_releases_", None)
     monkeypatch.setitem(engine.__dict__, "scores_", {})
+    monkeypatch.setitem(engine.__dict__, "score_ids_", {})
     old = index_of(["Old Show Zq", "Other Show Zq"], len(engine.catalog))
     engine.attach_new_releases(old)
     scores = pd.DataFrame([{"source": "tmdb", "kind": "tv", "ext_id": 0, "critics": None, "critics_count": 0,

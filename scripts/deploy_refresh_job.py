@@ -6,7 +6,9 @@
 
 What it sets up, in the project and region of the service (scripts/deploy_cloudrun.py):
 
-1. a private Cloud Storage bucket for the published new-release index;
+1. a private Cloud Storage bucket for the published new-release index, and two service accounts so the
+   public service and the job don't share an identity: crossverse-refresh (writes the bucket, reads the
+   keys, is the scheduler's identity) and crossverse-web (the service; reads the bucket, nothing else);
 2. the TMDB and IGDB keys from .env as Secret Manager secrets (values go through stdin, never argv or logs);
 3. a Cloud Run job "crossverse-refresh" on the service's own image (code, model and sentence model inside)
    running `crossverse refresh-new-releases --out /mnt/new-releases` with the bucket mounted;
@@ -61,8 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"missing in .env: {', '.join(missing)}", file=sys.stderr)
         return 1
     project = out("config", "get-value", "project")
-    number = out("projects", "describe", project, "--format=value(projectNumber)")
-    account = f"{number}-compute@developer.gserviceaccount.com"  # Cloud Run's default runtime identity
+    job_sa, web_sa = (f"crossverse-{n}@{project}.iam.gserviceaccount.com" for n in ("refresh", "web"))
     image = out("run", "services", "describe", args.service, "--region", args.region,
                 "--format=value(spec.template.spec.containers[0].image)")
     bucket = args.bucket or f"{project}-crossverse-new-releases"
@@ -72,25 +73,32 @@ def main(argv: list[str] | None = None) -> int:
     run_uri = (f"https://run.googleapis.com/v2/projects/{project}/locations/{args.region}/jobs/{args.job}:run")
 
     steps: list[tuple[list[str], str | None, bool]] = [  # (gcloud args, stdin, may fail because it exists)
+        (["iam", "service-accounts", "create", "crossverse-refresh",
+          "--display-name=CrossVerse new-release refresh job"], None, True),
+        (["iam", "service-accounts", "create", "crossverse-web", "--display-name=CrossVerse public service"],
+         None, True),
         (["storage", "buckets", "create", f"gs://{bucket}", f"--location={args.region}",
           "--uniform-bucket-level-access", "--public-access-prevention"], None, True),
-        (["storage", "buckets", "add-iam-policy-binding", f"gs://{bucket}", f"--member=serviceAccount:{account}",
+        (["storage", "buckets", "add-iam-policy-binding", f"gs://{bucket}", f"--member=serviceAccount:{job_sa}",
           "--role=roles/storage.objectAdmin"], None, False),
+        (["storage", "buckets", "add-iam-policy-binding", f"gs://{bucket}", f"--member=serviceAccount:{web_sa}",
+          "--role=roles/storage.objectViewer"], None, False),
     ]
     for key, name in SECRETS.items():
         steps += [(["secrets", "create", name, "--replication-policy=automatic", "--data-file=-"], env[key], True),
-                  (["secrets", "add-iam-policy-binding", name, f"--member=serviceAccount:{account}",
+                  (["secrets", "add-iam-policy-binding", name, f"--member=serviceAccount:{job_sa}",
                     "--role=roles/secretmanager.secretAccessor"], None, False)]
     steps += [
         (["run", "jobs", "deploy", args.job, "--image", image, "--region", args.region, "--command", "crossverse",
           "--args", "refresh-new-releases,--out,/mnt/new-releases", "--set-secrets", secrets,
-          "--cpu", "2", "--memory", "4Gi", "--task-timeout", "3600", "--max-retries", "1", *mount], None, False),
+          "--cpu", "2", "--memory", "4Gi", "--task-timeout", "3600", "--max-retries", "1",
+          "--service-account", job_sa, *mount], None, False),
         (["run", "jobs", "add-iam-policy-binding", args.job, "--region", args.region,
-          f"--member=serviceAccount:{account}", "--role=roles/run.invoker"], None, False),
+          f"--member=serviceAccount:{job_sa}", "--role=roles/run.invoker"], None, False),
         (["scheduler", "jobs", "create", "http", f"{args.job}-schedule", f"--location={args.region}",
           f"--schedule={args.schedule}", f"--time-zone={args.time_zone}", f"--uri={run_uri}", "--http-method=POST",
-          f"--oauth-service-account-email={account}"], None, True),
-        (["run", "services", "update", args.service, "--region", args.region,
+          f"--oauth-service-account-email={job_sa}"], None, True),
+        (["run", "services", "update", args.service, "--region", args.region, "--service-account", web_sa,
           *new_releases_mount(bucket)], None, False),
     ]
     if args.run_now:
