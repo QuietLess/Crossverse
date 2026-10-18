@@ -78,6 +78,18 @@ _NOT_RECOMMENDABLE = re.compile(
     re.I,
 )
 
+# Work bounds for title lookups on the public API. A query's distinct words beyond the first dozen don't
+# narrow a title search further, but each one costs a set intersection; "did you mean" runs string
+# similarity only on the most popular candidates sharing a prefix (a long query of common words shares
+# one with most of the catalog: ~23k SequenceMatcher calls, seconds of CPU).
+MAX_QUERY_WORDS = 12
+SUGGEST_MAX_CANDIDATES = 1000
+
+
+def _query_words(q: str) -> list[str]:
+    """Distinct words of a normalised query, in order, at most MAX_QUERY_WORDS."""
+    return list(dict.fromkeys(q.split()))[:MAX_QUERY_WORDS]
+
 
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", s.lower()).strip()
@@ -550,6 +562,16 @@ class CrossVerseEngine:
             self.__dict__["_match"] = np.array([_match_key(_TRAILING_YEAR.sub("", t)) for t in self._titles])
         return self.__dict__["_match"]
 
+    def _exact_titles(self) -> dict[str, list[int]]:
+        """Match key ('batman begins') -> item indices, for strict lookups. Rebuilt if the titles change."""
+        match = self._match_titles
+        if self.__dict__.get("_exact_src") is not match:
+            exact: dict[str, list[int]] = {}
+            for i, k in enumerate(match):
+                exact.setdefault(str(k), []).append(i)
+            self.__dict__["_exact"], self.__dict__["_exact_src"] = exact, match
+        return self.__dict__["_exact"]
+
     def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[dict[str, Any]]:
         title, hinted_domain, year = parse_query(query)
         domain = domain or hinted_domain
@@ -557,11 +579,12 @@ class CrossVerseEngine:
         if not q:
             return []
         index = self._prefix_index()
-        sets = [index.get(t[:12], set()) for t in q.split()]
-        if any(len(t) > 12 for t in q.split()):  # long tokens: verify the full token on the shortlist
+        words = _query_words(q)
+        sets = [index.get(t[:12], set()) for t in words]
+        if any(len(t) > 12 for t in words):  # long tokens: verify the full token on the shortlist
             cand = set.intersection(*sets) if sets else set()
             sets = [{i for i in cand if all(any(w.startswith(t) for w in self._norm_titles[i].split())
-                                               for t in q.split())}]
+                                               for t in words)}]
         hits = set.intersection(*sets) if sets else set()
         mask = self.catalog.mask(domain)
         idx = np.array(sorted(i for i in hits if mask[i]), dtype=np.int64)
@@ -602,7 +625,15 @@ class CrossVerseEngine:
         key = _match_key(_TRAILING_YEAR.sub("", name))
         if not key:
             return None
-        for hit in self.search(name, domain, 20):
+        # Exact-title lookup, not a search: an import sends up to 5000 names, and a search for a name of
+        # common words ranks every title containing them. Same order as search: same year, then popularity.
+        mask, years = self.catalog.mask(domain), self.catalog.items["year"].to_numpy()
+        idx = sorted((i for i in self._exact_titles().get(key, ()) if mask[i]),
+                     key=lambda i: (not (year and years[i] == year), -self.popularity[i]))
+        hits = [self.item_dict(i) for i in idx]
+        if self.fresh is not None:
+            hits += [self._new_item(n) for is_exact, n in self.fresh.search(name, domain, 20) if is_exact]
+        for hit in hits:
             if _match_key(_TRAILING_YEAR.sub("", hit["title"])) != key:
                 continue
             if year is None or hit["year"] is None or abs(hit["year"] - year) <= 1:
@@ -613,15 +644,18 @@ class CrossVerseEngine:
         """'Did you mean' for unresolved titles: candidates sharing a token prefix, ranked by similarity."""
         from difflib import SequenceMatcher
 
-        q = _norm(query)
+        q = " ".join(_query_words(_norm(query)))  # the similarity cost grows with the query length too
         index = self._prefix_index()
         cand: set[int] = set()
         for tok in q.split():
             if len(tok) >= 3:
                 cand |= index.get(tok[:4] if len(tok) >= 4 else tok, set())
         mask = self.catalog.mask(domain)
-        scored = [(SequenceMatcher(None, q, self._norm_titles[i]).ratio(), self.popularity[i], i)
-                  for i in cand if mask[i]]
+        idx = np.fromiter((i for i in cand if mask[i]), dtype=np.int64)
+        if len(idx) > SUGGEST_MAX_CANDIDATES:
+            idx = idx[np.argpartition(-self.popularity[idx], SUGGEST_MAX_CANDIDATES)[:SUGGEST_MAX_CANDIDATES]]
+        scored = [(SequenceMatcher(None, q, self._norm_titles[i]).ratio(), self.popularity[i], int(i))
+                  for i in idx]
         scored.sort(reverse=True)
         return [self.item_dict(i) for s, _, i in scored[:n] if s >= 0.5]
 

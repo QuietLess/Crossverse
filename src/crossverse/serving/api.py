@@ -13,6 +13,7 @@ from typing import Annotated, Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import Path as PathParam
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from pydantic import BaseModel, Field, field_validator
@@ -35,6 +36,7 @@ Target = Literal["movie", "game", "film", "tv"]
 MAX_PROFILE = 100
 MAX_EXCLUDE = 1000
 MAX_CONTEXT_BYTES = 4096
+MAX_SUGGESTED = 5  # unknown titles that get "did you mean" suggestions per request
 Title = Annotated[str, Field(max_length=300)]
 ShortText = Annotated[str, Field(max_length=100)]
 UserId = Annotated[str, Field(max_length=128)]
@@ -59,7 +61,7 @@ class RecommendRequest(BaseModel):
     target_domain: Target | None = Field(None, description="game, film (movies only), tv (series only), "
                                                      "movie (films and TV), or null for everything")
     k: int = Field(10, ge=1, le=100)
-    preferences: list[ShortText] = Field(default_factory=list, max_length=50, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
+    preferences: list[ShortText] = Field(default_factory=list, max_length=len(THEMES), description=f"cold-start themes, e.g. {list(THEMES[:5])}")
     free_text: str = Field("", max_length=500, description="cold-start free text, e.g. 'dark sci-fi about AI'")
     exclude: list[Title] = Field(default_factory=list, max_length=MAX_EXCLUDE)
     explain: bool = True
@@ -163,6 +165,7 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
     engine.search("warmup")  # build the title prefix index before the first request
+    engine.match_title("warmup")  # and the exact-title table (Letterboxd import)
     # Build the other lazy pieces too (eligibility masks, the sentence model for mood queries) so the
     # first visitor of a fresh container (Cloud Run cold start) doesn't wait seconds for them.
     engine.compilations()
@@ -242,24 +245,30 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             resolved.append({**(eng.describe(iid) or {}), "rating": 1.0, "input": d})
         return pairs, dis, resolved, unresolved, ambiguous
 
+    def suggestions(eng: CrossVerseEngine, unresolved: list[str], domain: str | None = None
+                    ) -> dict[str, list[dict[str, Any]]]:
+        """'Did you mean' for the first few distinct unknown titles (each lookup costs real CPU)."""
+        return {u: eng.suggest(u, domain) for u in list(dict.fromkeys(unresolved))[:MAX_SUGGESTED]}
+
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
                 free_text="", exclude=None, explain=True, diversify=True,
                 ambiguous=None, taste=0.0) -> RecommendResponse:
         key = "rec:" + hashlib.sha1(json.dumps(
             [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste],
             sort_keys=True, default=str).encode()).hexdigest()
+        # The key covers what resolved; what this request typed (unknown titles, inputs) is its own.
+        per_request = {"resolved_profile": resolved, "unresolved": unresolved,
+                       "suggestions": suggestions(eng, unresolved), "ambiguous": ambiguous or {}}
         cached = state.cache.get(key)
         if cached:
-            return RecommendResponse(**cached)
+            return RecommendResponse(**{**cached, **per_request})
         # New releases aren't in the trained model: their catalog stand-ins take their place in the ranking.
         ranked_pairs, stand_ins = eng.expand_profile(pairs)
         res: EngineResult = eng.recommend(ranked_pairs, dis, target, k, prefs, free_text, exclude, explain, diversify,
                                           taste)
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
-                                 resolved_profile=resolved, unresolved=unresolved,
-                                 suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
-                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
+                                 **per_request, candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
                                  same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude),
                                  new_releases=eng.new_releases([i for i, _ in pairs], target,
                                                                exclude_ids=[*(exclude or []), *dis]),
@@ -295,7 +304,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "movie")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked movies were found",
-                                      "suggestions": {u: eng.suggest(u, "movie") for u in unresolved}})
+                                      "suggestions": suggestions(eng, unresolved, "movie")})
         return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain, ambiguous=ambiguous,
                        taste=req.taste)
 
@@ -306,12 +315,12 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "game")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked games were found",
-                                      "suggestions": {u: eng.suggest(u, "game") for u in unresolved}})
+                                      "suggestions": suggestions(eng, unresolved, "game")})
         return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain, ambiguous=ambiguous,
                        taste=req.taste)
 
     @app.get("/similar/{domain}/{item_id}", tags=["items"])
-    def similar(domain: Domain, item_id: str, k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+    def similar(domain: Domain, item_id: str = PathParam(..., max_length=300), k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
         """Same-domain nearest neighbours plus cross-domain analogues."""
         eng = engine_or_503()
         iid = eng.resolve(item_id, domain)
@@ -320,12 +329,12 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         return eng.similar(iid, k)
 
     @app.get("/items/search", tags=["items"])
-    def search(q: str = Query(..., min_length=1), domain: Domain | None = None,
+    def search(q: str = Query(..., min_length=1, max_length=300), domain: Domain | None = None,
                limit: int = Query(10, ge=1, le=50)) -> list[dict[str, Any]]:
         return engine_or_503().search(q, domain, limit)
 
     @app.get("/items/{item_id}", tags=["items"])
-    def item(item_id: str) -> dict[str, Any]:
+    def item(item_id: str = PathParam(..., max_length=300)) -> dict[str, Any]:
         found = engine_or_503().describe(item_id)
         if found is None:
             raise HTTPException(404, "unknown item")

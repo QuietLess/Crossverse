@@ -54,7 +54,8 @@ class NewReleaseIndex:
 
     def search(self, query: str, domain: str | None = None, limit: int = 10) -> list[tuple[bool, int]]:
         """(exact title, row) for titles containing every query word as a word prefix."""
-        q = universe.norm(query).split()
+        full = universe.norm(query)
+        q = list(dict.fromkeys(full.split()))[:12]  # bounded work per query, as the catalog search
         if not q:
             return []
         dom = self.items["domain"].to_numpy()
@@ -62,7 +63,7 @@ class NewReleaseIndex:
         for n, title in enumerate(self._norm):
             words = title.split()
             if (domain is None or dom[n] == domain) and all(any(w.startswith(t) for w in words) for t in q):
-                hits.append((title == " ".join(q) or title.removeprefix("the ") == " ".join(q), n))
+                hits.append((title == full or title.removeprefix("the ") == full, n))
         hits.sort(key=lambda h: (not h[0], -int(self.items["votes"].iloc[h[1]])))
         return hits[:limit]
 
