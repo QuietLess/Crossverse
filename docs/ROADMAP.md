@@ -1,5 +1,7 @@
 # Roadmap
 
+To continue: [NEXT_STEPS.md](NEXT_STEPS.md) (going live with the refresh, then follow-ups).
+
 ## Done
 
 | when | milestone |

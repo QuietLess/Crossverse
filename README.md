@@ -109,7 +109,7 @@ crossverse recommend "Blade Runner 2049" "Ex Machina" --to game
 docker compose -f infra/docker-compose.yml up --build   # API + web + Postgres + Redis + Prometheus + Grafana
 ```
 
-Deploying (see the scripts' docstrings): `python scripts/deploy_cloudrun.py` builds the production
+Deploying (step by step, with the order that matters: [docs/NEXT_STEPS.md](docs/NEXT_STEPS.md); details in the scripts' docstrings): `python scripts/deploy_cloudrun.py` builds the production
 model into a private image and serves it on Google Cloud Run; `python scripts/firebase_hosting.py`
 puts the short `*.web.app` URL in front of it. `python scripts/deploy_refresh_job.py` prints (and with
 `--apply` runs) the setup of the twice-weekly new-release refresh: a Cloud Run job on the service's image,
