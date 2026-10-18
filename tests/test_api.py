@@ -132,7 +132,8 @@ def test_web_ui_is_served(client):
     for prefix in ("/", "/ui/"):  # the root serves the app; /ui/ keeps older links working
         page = client.get(prefix)
         assert page.status_code == 200 and "CrossVerse" in page.text
-        for asset in ("app.js", "style.css", "logo.svg"):
+        assert 'src="tmdb.svg"' in page.text  # TMDB API terms §3: identify TMDB use with its logo
+        for asset in ("app.js", "style.css", "logo.svg", "tmdb.svg"):
             assert client.get(f"{prefix}{asset}").status_code == 200
     assert client.get("/health").json()["status"] == "ok"  # API routes still win over the static mount
     assert client.get("/docs").status_code == 200
