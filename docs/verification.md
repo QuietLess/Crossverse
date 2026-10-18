@@ -3,6 +3,40 @@
 What has been checked, how, and what could not be checked on the development machine (Windows 11,
 no Docker). Dates: 2026-10-05.
 
+## Re-run 2026-10-18 (macOS, Python 3.12, `constraints.txt` versions)
+
+| check | result |
+|---|---|
+| `ruff check src tests pipelines apps scripts` | All checks passed |
+| `mypy src/crossverse --ignore-missing-imports` | no issues in 42 source files |
+| `pytest` (no Postgres/Redis) | 294 passed, 3 skipped (the storage-backend integration tests) |
+
+Found and fixed: requests that match no API route were labelled with their raw URL in Prometheus, so
+50 probes of random paths created 50 time series (reproduced against the app with the synthetic
+fixture); they now share `<unmatched>`. Request lists, titles and feedback context had no size limits
+(a 2 MB `context` was stored); they are now bounded and rejected with 422.
+
+A security review of that change found that bounded input still allowed unbounded CPU. Measured with
+the engine's own search/suggest code on a synthetic 42.6k-title catalog (the size of ds3), worst case
+before → after:
+
+| path | before | after |
+|---|---:|---:|
+| "did you mean" for one unknown 300-character title of common words | 8.1 s | 0.08 s |
+| one `/recommend` with 200 such titles (now: suggestions for 5 distinct ones) | ~1,600 s | 0.4 s |
+| one Letterboxd name of a repeated common word (now an exact-title lookup) | 0.28 s | 0.0001 s |
+| a 5,000-name Letterboxd import of such names | ~1,400 s | ~1 s |
+| a 5,000-name import with a 3,000-title new-release index attached (as in production) | 18–30 s | 0.1–1.2 s |
+
+A first version of the fix was timed without a new-release index and missed that every name was also
+scanned against all new releases; the security re-review caught it. One new-release search (type-ahead,
+title resolution) still scans the index: ~7 ms per call for 4,000 titles.
+
+The same review found that a cached `/recommend` response returned the first requester's unknown
+titles and inputs; cache hits now carry the current request's own.
+
+The tables below are the original Windows run (2026-10-05).
+
 ## Code quality and CI
 
 | check | how | result |

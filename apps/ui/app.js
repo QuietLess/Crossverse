@@ -17,6 +17,8 @@ const VIBES = [
   { max: 0.7, label: "⚖️ Balanced", hint: "fan favourites that also share the feel" },
   { max: 1.01, label: "🧬 Same DNA", hint: "closest story, setting and themes" },
 ];
+// The API accepts up to 100 liked and 100 disliked titles; a single cap on all picks keeps both under it.
+const MAX_PICKS = 100;
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 const state = { picks: [], to: "game", toTouched: false, taste: 0.8, moods: new Set(), text: "" };
@@ -125,7 +127,7 @@ async function loadUrl() {
   state.moods = new Set((p.get("m") || "").split(",").filter(Boolean));
   state.text = p.get("q") || "";
   const ids = [...(p.get("l") || "").split(",").map((id) => [id, true]), ...(p.get("d") || "").split(",").map((id) => [id, false])]
-    .filter(([id]) => id);
+    .filter(([id]) => id).slice(0, MAX_PICKS);
   const items = await Promise.all(ids.map(([id]) => api(`/items/${encodeURIComponent(id)}`).catch(() => null)));
   state.picks = items.map((it, n) => it && { ...it, liked: ids[n][1] }).filter(Boolean);
 }
@@ -198,6 +200,7 @@ document.addEventListener("keydown", (e) => {
 // ---------------------------------------------------------------------------------------------
 function addPick(item, liked = true) {
   if (state.picks.some((x) => x.item_id === item.item_id)) return;
+  if (state.picks.length >= MAX_PICKS) return toast(`That's ${MAX_PICKS} picks already: remove one to add another.`);
   state.picks.push({ ...item, liked });
   if (!state.toTouched && state.picks.length === 1) state.to = item.domain === "game" ? "film" : "game";
   search.value = "";
@@ -574,7 +577,9 @@ async function importLetterboxd(file) {
     const loved = (rated.length ? rated.filter((m) => m.member_rating >= LOVED_STARS) : res.matched).slice(0, MAX_LOVED);
     const disliked = rated.filter((m) => m.member_rating <= DISLIKED_STARS).slice(-MAX_DISLIKED);
     const had = new Set(state.picks.map((p) => p.item_id));
-    const fresh = [...loved.map((m) => [m, true]), ...disliked.map((m) => [m, false])].filter(([m]) => !had.has(m.item_id));
+    const fresh = [...loved.map((m) => [m, true]), ...disliked.map((m) => [m, false])].filter(([m]) => !had.has(m.item_id))
+      .slice(0, Math.max(MAX_PICKS - state.picks.length, 0));
+    if (!fresh.length && state.picks.length >= MAX_PICKS) return toast(`That's ${MAX_PICKS} picks already: remove some to import more.`);
     if (!fresh.length) return toast(`Found ${res.matched.length} of ${res.total} films, but none rated ${LOVED_STARS}★ or more.`);
     fresh.forEach(([m, liked]) => state.picks.push({ ...m, liked }));
     if (!state.toTouched) state.to = "game";

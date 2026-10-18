@@ -3,6 +3,7 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
+from crossverse.features.themes import THEMES
 from crossverse.serving.api import create_app
 
 
@@ -171,3 +172,85 @@ def test_letterboxd_import_is_strict(client, trained):
     assert [m["item_id"] for m in body["matched"]] == [movie["item_id"]]
     assert body["matched"][0]["member_rating"] == 4.5 and body["total"] == 4
     assert len(body["unmatched"]) == 3
+
+
+def test_unmatched_paths_share_one_metric_label(client):
+    # Bots probing random URLs on the public service must not create one time series per URL.
+    for n in range(5):
+        assert client.get(f"/probe-{n}/wp-admin").status_code == 404
+    body = client.get("/metrics").text
+    assert "/probe-" not in body
+    assert 'endpoint="<unmatched>",status="404"' in body
+
+
+@pytest.mark.parametrize("path, payload", [
+    ("/recommend", {"liked": [{"item": "x"}] * 101}),
+    ("/recommend", {"disliked": ["x"] * 101}),
+    ("/recommend", {"exclude": ["x"] * 1001}),
+    ("/recommend", {"preferences": ["fantasy"] * (len(THEMES) + 1)}),
+    ("/recommend", {"liked": [{"item": "x" * 301}]}),
+    ("/recommend", {"preferences": ["x" * 101]}),
+    ("/recommend", {"user_id": "u" * 129}),
+    ("/feedback", {"item_id": "x", "event": "like", "context": {"blob": "A" * 5000}}),
+    ("/feedback", {"item_id": "x", "event": "like", "context": {f"k{n}": n for n in range(51)}}),
+    ("/feedback", {"item_id": "x", "event": "like", "user_id": "u" * 129}),
+    ("/feedback", {"item_id": "x" * 301, "event": "like"}),
+])
+def test_oversized_requests_are_rejected(client, path, payload):
+    # The service is public: request size must be bounded before any title matching or storage happens.
+    assert client.post(path, json=payload).status_code == 422
+
+
+def test_domain_endpoints_cap_profile_size(client, trained):
+    # with real titles, so the 422 comes from the size limit and not from "none of the movies were found"
+    title = _titles(trained[0], "movie", 1)[0]
+    r = client.post("/recommend/movie-to-game", json={"liked": [{"item": title}] * 101})
+    assert r.status_code == 422 and "liked" in r.text
+
+
+def test_requests_at_the_limits_still_work(client, trained):
+    engine, _, _ = trained
+    title = _titles(engine, "movie", 1)[0]
+    r = client.post("/recommend", json={"liked": [{"item": title}] * 100, "k": 3})
+    assert r.status_code == 200, r.text
+    item_id = r.json()["items"][0]["item_id"]
+    f = client.post("/feedback", json={"item_id": item_id, "event": "click", "context": {"source": "ui", "rank": 1}})
+    assert f.status_code == 200, f.text
+
+
+def test_every_mood_can_be_selected(client):
+    # the web UI lets a visitor toggle every theme, and shared links carry them all
+    r = client.post("/recommend", json={"preferences": list(THEMES), "k": 3})
+    assert r.status_code == 200, r.text
+
+
+@pytest.mark.parametrize("url", ["/items/search?q=" + "a" * 301, "/similar/game/" + "x" * 301])
+def test_long_lookup_strings_are_rejected(client, url):
+    assert client.get(url).status_code == 422
+
+
+def test_suggestions_are_bounded_per_request(client, trained, monkeypatch):
+    # "did you mean" is the expensive part of an unknown title: once per distinct title, for a few titles only
+    engine, _, _ = trained
+    calls = []
+    real = engine.suggest
+    monkeypatch.setattr(engine, "suggest", lambda q, *a, **kw: calls.append(q) or real(q, *a, **kw))
+    liked = [{"item": "zzq unknown title"}] * 100
+    disliked = [f"zzq unknown {n}" for n in range(100)]
+    r = client.post("/recommend", json={"liked": liked, "disliked": disliked, "k": 3})
+    assert r.status_code == 200, r.text
+    assert len(calls) <= 5 and len(set(calls)) == len(calls)
+    assert len(r.json()["suggestions"]) <= 5
+    calls.clear()
+    r = client.post("/recommend/movie-to-game", json={"liked": [{"item": f"zzq nothing {n}"} for n in range(100)]})
+    assert r.status_code == 422 and len(calls) <= 5
+
+
+def test_cached_response_reports_this_requests_unknown_titles(client, trained):
+    # the response cache is keyed on what resolved; the unknown titles belong to each request
+    title = _titles(trained[0], "movie", 1)[0]
+    first = client.post("/recommend", json={"liked": [{"item": title}, {"item": "zzq first unknown"}], "k": 4})
+    second = client.post("/recommend", json={"liked": [{"item": title}, {"item": "zzq second unknown"}], "k": 4})
+    assert first.json()["unresolved"] == ["zzq first unknown"]
+    assert second.json()["unresolved"] == ["zzq second unknown"]
+    assert [p["input"] for p in second.json()["resolved_profile"]] == [title]

@@ -9,13 +9,14 @@ import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 import numpy as np
 from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi import Path as PathParam
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from crossverse import __version__
 from crossverse.config import PROJECT_ROOT, Settings, get_settings
@@ -29,6 +30,16 @@ log = logging.getLogger(__name__)
 
 Domain = Literal["movie", "game"]
 Target = Literal["movie", "game", "film", "tv"]
+# Request size limits. The service is public, so every list and string is bounded before title matching
+# (fuzzy "did you mean" per unknown title) or storage happens. The web UI sends far less: hand-picked
+# titles plus at most 10 imported favourites.
+MAX_PROFILE = 100
+MAX_EXCLUDE = 1000
+MAX_CONTEXT_BYTES = 4096
+MAX_SUGGESTED = 5  # unknown titles that get "did you mean" suggestions per request
+Title = Annotated[str, Field(max_length=300)]
+ShortText = Annotated[str, Field(max_length=100)]
+UserId = Annotated[str, Field(max_length=128)]
 # Web UI files. The default fits a source checkout; installed (non-editable) packages, as in the container
 # images, set CROSSVERSE_UI_DIR because PROJECT_ROOT then points into site-packages.
 UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui")
@@ -38,31 +49,31 @@ UI_DIR = Path(os.environ.get("CROSSVERSE_UI_DIR") or PROJECT_ROOT / "apps" / "ui
 # Schemas
 # ---------------------------------------------------------------------------------------------
 class ProfileItem(BaseModel):
-    item: str = Field(..., description="catalog item_id or a title to resolve", examples=["Blade Runner 2049"])
+    item: Title = Field(..., description="catalog item_id or a title to resolve", examples=["Blade Runner 2049"])
     rating: float = Field(5.0, ge=1, le=5)
     domain: Domain | None = Field(None, description="disambiguate titles that exist as both a movie and a game "
                                                     "(or prefix the title: 'game: Batman Begins')")
 
 
 class RecommendRequest(BaseModel):
-    liked: list[ProfileItem] = Field(default_factory=list)
-    disliked: list[str] = Field(default_factory=list, description="item_ids or titles")
+    liked: list[ProfileItem] = Field(default_factory=list, max_length=MAX_PROFILE)
+    disliked: list[Title] = Field(default_factory=list, max_length=MAX_PROFILE, description="item_ids or titles")
     target_domain: Target | None = Field(None, description="game, film (movies only), tv (series only), "
                                                      "movie (films and TV), or null for everything")
     k: int = Field(10, ge=1, le=100)
-    preferences: list[str] = Field(default_factory=list, description=f"cold-start themes, e.g. {list(THEMES[:5])}")
+    preferences: list[ShortText] = Field(default_factory=list, max_length=len(THEMES), description=f"cold-start themes, e.g. {list(THEMES[:5])}")
     free_text: str = Field("", max_length=500, description="cold-start free text, e.g. 'dark sci-fi about AI'")
-    exclude: list[str] = Field(default_factory=list)
+    exclude: list[Title] = Field(default_factory=list, max_length=MAX_EXCLUDE)
     explain: bool = True
     diversify: bool = True
-    user_id: str | None = None
+    user_id: UserId | None = None
     taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
                          "ranker), 1 = similar story & setting among well-liked titles; in between, a blend")
 
 
 class DomainRequest(BaseModel):
-    liked: list[ProfileItem]
-    disliked: list[str] = Field(default_factory=list)
+    liked: list[ProfileItem] = Field(..., max_length=MAX_PROFILE)
+    disliked: list[Title] = Field(default_factory=list, max_length=MAX_PROFILE)
     k: int = Field(10, ge=1, le=100)
     explain: bool = True
     taste: float = Field(0.0, ge=0, le=1, description="0 = what fans with similar histories liked (trained "
@@ -80,11 +91,18 @@ class LetterboxdImport(BaseModel):
 
 
 class FeedbackRequest(BaseModel):
-    item_id: str
+    item_id: Title
     event: Literal["like", "dislike", "click", "save", "skip"]
-    recommendation_id: str | None = None
-    user_id: str | None = None
-    context: dict[str, Any] = Field(default_factory=dict)
+    recommendation_id: ShortText | None = None
+    user_id: UserId | None = None
+    context: dict[ShortText, Any] = Field(default_factory=dict, max_length=50)
+
+    @field_validator("context")
+    @classmethod
+    def _small_context(cls, v: dict[str, Any]) -> dict[str, Any]:
+        if len(json.dumps(v, default=str)) > MAX_CONTEXT_BYTES:
+            raise ValueError(f"context is larger than {MAX_CONTEXT_BYTES} bytes as JSON")
+        return v
 
 
 class RecItem(BaseModel):
@@ -147,6 +165,7 @@ def load_engine(settings: Settings, engine: CrossVerseEngine | None = None) -> N
         engine = CrossVerseEngine.load(registry.engine_path(settings.serving.model_version))
     state.engine = engine
     engine.search("warmup")  # build the title prefix index before the first request
+    engine.match_title("warmup")  # and the exact-title table (Letterboxd import)
     # Build the other lazy pieces too (eligibility masks, the sentence model for mood queries) so the
     # first visitor of a fresh container (Cloud Run cold start) doesn't wait seconds for them.
     engine.compilations()
@@ -179,7 +198,6 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
 
     @app.middleware("http")
     async def metrics_mw(request: Request, call_next):
-        route = request.scope.get("route")
         t = time.perf_counter()
         status = "500"
         try:
@@ -187,8 +205,11 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             status = str(response.status_code)
             return response
         finally:
+            # API routes are labelled by their template (/similar/{domain}/{item_id}). Anything else (the
+            # static UI, 404s from bots probing random URLs) shares one label: a raw URL would add a new
+            # time series per distinct path, forever.
             route = request.scope.get("route")
-            path = getattr(route, "path", request.url.path)
+            path = getattr(route, "path", "<unmatched>")
             if path != "/metrics":
                 M.LATENCY.labels(path).observe(time.perf_counter() - t)
                 M.REQUESTS.labels(path, status).inc()
@@ -224,24 +245,30 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
             resolved.append({**(eng.describe(iid) or {}), "rating": 1.0, "input": d})
         return pairs, dis, resolved, unresolved, ambiguous
 
+    def suggestions(eng: CrossVerseEngine, unresolved: list[str], domain: str | None = None
+                    ) -> dict[str, list[dict[str, Any]]]:
+        """'Did you mean' for the first few distinct unknown titles (each lookup costs real CPU)."""
+        return {u: eng.suggest(u, domain) for u in list(dict.fromkeys(unresolved))[:MAX_SUGGESTED]}
+
     def respond(eng: CrossVerseEngine, mode: str, pairs, dis, resolved, unresolved, target, k, prefs=None,
                 free_text="", exclude=None, explain=True, diversify=True,
                 ambiguous=None, taste=0.0) -> RecommendResponse:
         key = "rec:" + hashlib.sha1(json.dumps(
             [eng.version, mode, pairs, dis, target, k, prefs, free_text, exclude, explain, diversify, taste],
             sort_keys=True, default=str).encode()).hexdigest()
+        # The key covers what resolved; what this request typed (unknown titles, inputs) is its own.
+        per_request = {"resolved_profile": resolved, "unresolved": unresolved,
+                       "suggestions": suggestions(eng, unresolved), "ambiguous": ambiguous or {}}
         cached = state.cache.get(key)
         if cached:
-            return RecommendResponse(**cached)
+            return RecommendResponse(**{**cached, **per_request})
         # New releases aren't in the trained model: their catalog stand-ins take their place in the ranking.
         ranked_pairs, stand_ins = eng.expand_profile(pairs)
         res: EngineResult = eng.recommend(ranked_pairs, dis, target, k, prefs, free_text, exclude, explain, diversify,
                                           taste)
         items = [RecItem(**r.__dict__) for r in res.items]
         body = RecommendResponse(model_version=res.model_version, mode=mode, cold_start=res.cold_start,
-                                 resolved_profile=resolved, unresolved=unresolved,
-                                 suggestions={u: eng.suggest(u) for u in unresolved}, ambiguous=ambiguous or {},
-                                 candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
+                                 **per_request, candidate_count=res.candidate_count, latency_ms=round(res.latency_ms, 2), items=items,
                                  same_universe=eng.same_universe([i for i, _ in pairs], target, exclude_ids=exclude),
                                  new_releases=eng.new_releases([i for i, _ in pairs], target,
                                                                exclude_ids=[*(exclude or []), *dis]),
@@ -277,7 +304,7 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "movie")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked movies were found",
-                                      "suggestions": {u: eng.suggest(u, "movie") for u in unresolved}})
+                                      "suggestions": suggestions(eng, unresolved, "movie")})
         return respond(eng, "movie_to_game", pairs, dis, resolved, unresolved, "game", req.k, explain=req.explain, ambiguous=ambiguous,
                        taste=req.taste)
 
@@ -288,12 +315,12 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         pairs, dis, resolved, unresolved, ambiguous = resolve_profile(eng, req.liked, req.disliked, "game")
         if not pairs:
             raise HTTPException(422, {"error": "none of the liked games were found",
-                                      "suggestions": {u: eng.suggest(u, "game") for u in unresolved}})
+                                      "suggestions": suggestions(eng, unresolved, "game")})
         return respond(eng, "game_to_movie", pairs, dis, resolved, unresolved, "movie", req.k, explain=req.explain, ambiguous=ambiguous,
                        taste=req.taste)
 
     @app.get("/similar/{domain}/{item_id}", tags=["items"])
-    def similar(domain: Domain, item_id: str, k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
+    def similar(domain: Domain, item_id: str = PathParam(..., max_length=300), k: int = Query(10, ge=1, le=50)) -> dict[str, Any]:
         """Same-domain nearest neighbours plus cross-domain analogues."""
         eng = engine_or_503()
         iid = eng.resolve(item_id, domain)
@@ -302,12 +329,12 @@ def create_app(settings: Settings | None = None, engine: CrossVerseEngine | None
         return eng.similar(iid, k)
 
     @app.get("/items/search", tags=["items"])
-    def search(q: str = Query(..., min_length=1), domain: Domain | None = None,
+    def search(q: str = Query(..., min_length=1, max_length=300), domain: Domain | None = None,
                limit: int = Query(10, ge=1, le=50)) -> list[dict[str, Any]]:
         return engine_or_503().search(q, domain, limit)
 
     @app.get("/items/{item_id}", tags=["items"])
-    def item(item_id: str) -> dict[str, Any]:
+    def item(item_id: str = PathParam(..., max_length=300)) -> dict[str, Any]:
         found = engine_or_503().describe(item_id)
         if found is None:
             raise HTTPException(404, "unknown item")

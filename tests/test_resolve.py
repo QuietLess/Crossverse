@@ -82,3 +82,17 @@ def test_search_ignores_leading_article(trained, monkeypatch):
     expected = [items.iloc[big]["item_id"], items.iloc[small]["item_id"]]
     assert [h["item_id"] for h in engine.search("zqxmartian", limit=2)] == expected
     assert engine.resolve("Zqxmartian") == expected[0]
+
+
+def test_strict_title_match_skips_partial_matches(trained, monkeypatch):
+    # Letterboxd import matches up to 5000 names per request by exact title. A name made of a common word
+    # repeated must not pull every title containing that word through result building (seconds per name).
+    engine, _, _ = trained
+    word = max(engine._norm_titles[0].split(), key=len)
+    built = []
+    real = engine.item_dict
+    monkeypatch.setattr(engine, "item_dict", lambda i: built.append(i) or real(i))
+    assert engine.match_title(" ".join([word] * 50), None) is None
+    assert built == []
+    exact = str(engine.catalog.items.loc[engine.catalog.items["domain"] == "movie", "title"].iloc[0])
+    assert engine.match_title(exact, None)["title"] == exact
